@@ -60,10 +60,62 @@ import { ReceiptModal } from './src/components/ReceiptModal';
 import { AIAssistantModal } from './src/components/AIAssistantModal';
 import { theme } from './src/theme';
 
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('App ErrorBoundary caught an error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <SafeAreaView style={styles.splashContainer}>
+          <Ionicons name="alert-circle" size={48} color={theme.colors.danger} />
+          <Text style={styles.splashText}>Something went wrong</Text>
+          <Text style={[styles.splashSub, { textAlign: 'center', marginHorizontal: 20 }]}>
+            {this.state.error?.message || 'An unexpected error occurred.'}
+          </Text>
+          <TouchableOpacity
+            style={{
+              marginTop: 20,
+              backgroundColor: theme.colors.primary,
+              paddingHorizontal: 20,
+              paddingVertical: 10,
+              borderRadius: 10,
+            }}
+            onPress={() => this.setState({ hasError: false, error: null })}
+          >
+            <Text style={{ color: '#0B0F19', fontWeight: '700' }}>Retry App</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 type TabType = 'home' | 'fuel' | 'maintenance' | 'expenses' | 'reports' | 'settings';
 
 export default function App() {
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [currentTab, setCurrentTab] = useState<TabType>('home');
 
@@ -115,22 +167,27 @@ export default function App() {
       if (targetVehicle) {
         await loadVehicleRecords(targetVehicle.id);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error loading data:', err);
+      setErrorMessage(err?.message || 'Failed to load vehicle records');
     }
   }, []);
 
   const loadVehicleRecords = async (vehicleId: string) => {
-    const [f, s, e, p] = await Promise.all([
-      getFuelEntries(vehicleId),
-      getServiceRecords(vehicleId),
-      getExpenses(vehicleId),
-      getMaintenancePlans(vehicleId),
-    ]);
-    setFuelEntries(f);
-    setServiceRecords(s);
-    setExpenses(e);
-    setPlans(p);
+    try {
+      const [f, s, e, p] = await Promise.all([
+        getFuelEntries(vehicleId),
+        getServiceRecords(vehicleId),
+        getExpenses(vehicleId),
+        getMaintenancePlans(vehicleId),
+      ]);
+      setFuelEntries(f || []);
+      setServiceRecords(s || []);
+      setExpenses(e || []);
+      setPlans(p || []);
+    } catch (err: any) {
+      console.error('Error in loadVehicleRecords:', err);
+    }
   };
 
   useEffect(() => {
@@ -138,8 +195,9 @@ export default function App() {
       try {
         await initDatabase();
         await loadData();
-      } catch (err) {
+      } catch (err: any) {
         console.error('Bootstrap error:', err);
+        setErrorMessage(err?.message || 'Initialization failed');
       } finally {
         setLoading(false);
       }
@@ -269,308 +327,310 @@ export default function App() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.backgroundSecondary} />
+    <ErrorBoundary>
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="light-content" backgroundColor={theme.colors.backgroundSecondary} />
 
-      {/* Global Header with Vehicle Switcher & AI */}
-      <Header
-        activeVehicle={activeVehicle}
-        vehicles={vehicles}
-        onSelectVehicle={handleSelectVehicle}
-        onOpenAddVehicle={() => {
-          setEditingVehicle(null);
-          setShowAddVehicle(true);
-        }}
-        onOpenOdometerModal={() => setShowOdometerModal(true)}
-        onOpenAIAssistant={() => setShowAIAssistant(true)}
-      />
+        {/* Global Header with Vehicle Switcher & AI */}
+        <Header
+          activeVehicle={activeVehicle}
+          vehicles={vehicles}
+          onSelectVehicle={handleSelectVehicle}
+          onOpenAddVehicle={() => {
+            setEditingVehicle(null);
+            setShowAddVehicle(true);
+          }}
+          onOpenOdometerModal={() => setShowOdometerModal(true)}
+          onOpenAIAssistant={() => setShowAIAssistant(true)}
+        />
 
-      {/* Screen Views */}
-      <View style={styles.screenContainer}>
-        {currentTab === 'home' && (
-          <DashboardScreen
-            vehicle={activeVehicle}
-            fuelEntries={fuelEntries}
-            serviceRecords={serviceRecords}
-            expenses={expenses}
-            plans={plans}
-            currency={settings.currency}
-            onRefresh={handleRefresh}
-            refreshing={refreshing}
-            onOpenAddFuel={() => setShowAddFuel(true)}
-            onOpenAddService={(planId) => {
-              setSelectedPlanIdForService(planId);
-              setShowAddService(true);
-            }}
-            onOpenAddExpense={() => setShowAddExpense(true)}
-            onOpenOdometerModal={() => setShowOdometerModal(true)}
-            onOpenReceipt={handleOpenReceipt}
-            onNavigateTab={(tab) => setCurrentTab(tab as TabType)}
-          />
-        )}
+        {/* Screen Views */}
+        <View style={styles.screenContainer}>
+          {currentTab === 'home' && (
+            <DashboardScreen
+              vehicle={activeVehicle}
+              fuelEntries={fuelEntries}
+              serviceRecords={serviceRecords}
+              expenses={expenses}
+              plans={plans}
+              currency={settings.currency}
+              onRefresh={handleRefresh}
+              refreshing={refreshing}
+              onOpenAddFuel={() => setShowAddFuel(true)}
+              onOpenAddService={(planId) => {
+                setSelectedPlanIdForService(planId);
+                setShowAddService(true);
+              }}
+              onOpenAddExpense={() => setShowAddExpense(true)}
+              onOpenOdometerModal={() => setShowOdometerModal(true)}
+              onOpenReceipt={handleOpenReceipt}
+              onNavigateTab={(tab) => setCurrentTab(tab as TabType)}
+            />
+          )}
 
-        {currentTab === 'fuel' && (
-          <FuelLogScreen
-            vehicle={activeVehicle}
-            fuelEntries={fuelEntries}
-            currency={settings.currency}
-            onOpenAddFuel={() => setShowAddFuel(true)}
-            onOpenReceipt={handleOpenReceipt}
-            onDeleteFuel={handleDeleteFuel}
-          />
-        )}
+          {currentTab === 'fuel' && (
+            <FuelLogScreen
+              vehicle={activeVehicle}
+              fuelEntries={fuelEntries}
+              currency={settings.currency}
+              onOpenAddFuel={() => setShowAddFuel(true)}
+              onOpenReceipt={handleOpenReceipt}
+              onDeleteFuel={handleDeleteFuel}
+            />
+          )}
 
-        {currentTab === 'maintenance' && (
-          <MaintenanceScreen
-            vehicle={activeVehicle}
-            plans={plans}
-            serviceRecords={serviceRecords}
-            currency={settings.currency}
-            onOpenAddService={(planId) => {
-              setSelectedPlanIdForService(planId);
-              setShowAddService(true);
-            }}
-            onOpenAddPlan={() => setShowAddPlan(true)}
-            onOpenReceipt={handleOpenReceipt}
-            onDeleteService={handleDeleteService}
-            onDeletePlan={handleDeletePlan}
-          />
-        )}
+          {currentTab === 'maintenance' && (
+            <MaintenanceScreen
+              vehicle={activeVehicle}
+              plans={plans}
+              serviceRecords={serviceRecords}
+              currency={settings.currency}
+              onOpenAddService={(planId) => {
+                setSelectedPlanIdForService(planId);
+                setShowAddService(true);
+              }}
+              onOpenAddPlan={() => setShowAddPlan(true)}
+              onOpenReceipt={handleOpenReceipt}
+              onDeleteService={handleDeleteService}
+              onDeletePlan={handleDeletePlan}
+            />
+          )}
 
-        {currentTab === 'expenses' && (
-          <ExpensesScreen
-            vehicle={activeVehicle}
-            expenses={expenses}
-            fuelEntries={fuelEntries}
-            serviceRecords={serviceRecords}
-            currency={settings.currency}
-            onOpenAddExpense={() => setShowAddExpense(true)}
-            onOpenReceipt={handleOpenReceipt}
-            onDeleteExpense={handleDeleteExpense}
-          />
-        )}
+          {currentTab === 'expenses' && (
+            <ExpensesScreen
+              vehicle={activeVehicle}
+              expenses={expenses}
+              fuelEntries={fuelEntries}
+              serviceRecords={serviceRecords}
+              currency={settings.currency}
+              onOpenAddExpense={() => setShowAddExpense(true)}
+              onOpenReceipt={handleOpenReceipt}
+              onDeleteExpense={handleDeleteExpense}
+            />
+          )}
 
-        {currentTab === 'reports' && (
-          <ReportsScreen
-            vehicle={activeVehicle}
-            allVehicles={vehicles}
-            fuelEntries={fuelEntries}
-            serviceRecords={serviceRecords}
-            expenses={expenses}
-            plans={plans}
-            currency={settings.currency}
-          />
-        )}
+          {currentTab === 'reports' && (
+            <ReportsScreen
+              vehicle={activeVehicle}
+              allVehicles={vehicles}
+              fuelEntries={fuelEntries}
+              serviceRecords={serviceRecords}
+              expenses={expenses}
+              plans={plans}
+              currency={settings.currency}
+            />
+          )}
 
-        {currentTab === 'settings' && (
-          <SettingsScreen
-            settings={settings}
-            vehicles={vehicles}
-            activeVehicle={activeVehicle}
-            onUpdateSetting={handleUpdateSetting}
-            onOpenAddVehicle={() => {
-              setEditingVehicle(null);
-              setShowAddVehicle(true);
-            }}
-            onEditVehicle={(v) => {
-              setEditingVehicle(v);
-              setShowAddVehicle(true);
-            }}
-            onDeleteVehicle={handleDeleteVehicle}
-            onReloadAllData={handleRefresh}
-          />
-        )}
-      </View>
+          {currentTab === 'settings' && (
+            <SettingsScreen
+              settings={settings}
+              vehicles={vehicles}
+              activeVehicle={activeVehicle}
+              onUpdateSetting={handleUpdateSetting}
+              onOpenAddVehicle={() => {
+                setEditingVehicle(null);
+                setShowAddVehicle(true);
+              }}
+              onEditVehicle={(v) => {
+                setEditingVehicle(v);
+                setShowAddVehicle(true);
+              }}
+              onDeleteVehicle={handleDeleteVehicle}
+              onReloadAllData={handleRefresh}
+            />
+          )}
+        </View>
 
-      {/* Bottom Navigation Tab Bar */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => setCurrentTab('home')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={currentTab === 'home' ? 'home' : 'home-outline'}
-            size={22}
-            color={currentTab === 'home' ? theme.colors.primaryLight : theme.colors.textMuted}
-          />
-          <Text
-            style={[
-              styles.navLabel,
-              currentTab === 'home' && { color: theme.colors.primaryLight, fontWeight: '700' },
-            ]}
+        {/* Bottom Navigation Tab Bar */}
+        <View style={styles.bottomNav}>
+          <TouchableOpacity
+            style={styles.navItem}
+            onPress={() => setCurrentTab('home')}
+            activeOpacity={0.7}
           >
-            Home
-          </Text>
-        </TouchableOpacity>
+            <Ionicons
+              name={currentTab === 'home' ? 'home' : 'home-outline'}
+              size={22}
+              color={currentTab === 'home' ? theme.colors.primaryLight : theme.colors.textMuted}
+            />
+            <Text
+              style={[
+                styles.navLabel,
+                currentTab === 'home' && { color: theme.colors.primaryLight, fontWeight: '700' },
+              ]}
+            >
+              Home
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => setCurrentTab('fuel')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={currentTab === 'fuel' ? 'speedometer' : 'speedometer-outline'}
-            size={22}
-            color={currentTab === 'fuel' ? theme.colors.primaryLight : theme.colors.textMuted}
-          />
-          <Text
-            style={[
-              styles.navLabel,
-              currentTab === 'fuel' && { color: theme.colors.primaryLight, fontWeight: '700' },
-            ]}
+          <TouchableOpacity
+            style={styles.navItem}
+            onPress={() => setCurrentTab('fuel')}
+            activeOpacity={0.7}
           >
-            Fuel
-          </Text>
-        </TouchableOpacity>
+            <Ionicons
+              name={currentTab === 'fuel' ? 'speedometer' : 'speedometer-outline'}
+              size={22}
+              color={currentTab === 'fuel' ? theme.colors.primaryLight : theme.colors.textMuted}
+            />
+            <Text
+              style={[
+                styles.navLabel,
+                currentTab === 'fuel' && { color: theme.colors.primaryLight, fontWeight: '700' },
+              ]}
+            >
+              Fuel
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => setCurrentTab('maintenance')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={currentTab === 'maintenance' ? 'construct' : 'construct-outline'}
-            size={22}
-            color={currentTab === 'maintenance' ? theme.colors.primaryLight : theme.colors.textMuted}
-          />
-          <Text
-            style={[
-              styles.navLabel,
-              currentTab === 'maintenance' && { color: theme.colors.primaryLight, fontWeight: '700' },
-            ]}
+          <TouchableOpacity
+            style={styles.navItem}
+            onPress={() => setCurrentTab('maintenance')}
+            activeOpacity={0.7}
           >
-            Service
-          </Text>
-        </TouchableOpacity>
+            <Ionicons
+              name={currentTab === 'maintenance' ? 'construct' : 'construct-outline'}
+              size={22}
+              color={currentTab === 'maintenance' ? theme.colors.primaryLight : theme.colors.textMuted}
+            />
+            <Text
+              style={[
+                styles.navLabel,
+                currentTab === 'maintenance' && { color: theme.colors.primaryLight, fontWeight: '700' },
+              ]}
+            >
+              Service
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => setCurrentTab('expenses')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={currentTab === 'expenses' ? 'wallet' : 'wallet-outline'}
-            size={22}
-            color={currentTab === 'expenses' ? theme.colors.primaryLight : theme.colors.textMuted}
-          />
-          <Text
-            style={[
-              styles.navLabel,
-              currentTab === 'expenses' && { color: theme.colors.primaryLight, fontWeight: '700' },
-            ]}
+          <TouchableOpacity
+            style={styles.navItem}
+            onPress={() => setCurrentTab('expenses')}
+            activeOpacity={0.7}
           >
-            Expenses
-          </Text>
-        </TouchableOpacity>
+            <Ionicons
+              name={currentTab === 'expenses' ? 'wallet' : 'wallet-outline'}
+              size={22}
+              color={currentTab === 'expenses' ? theme.colors.primaryLight : theme.colors.textMuted}
+            />
+            <Text
+              style={[
+                styles.navLabel,
+                currentTab === 'expenses' && { color: theme.colors.primaryLight, fontWeight: '700' },
+              ]}
+            >
+              Expenses
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => setCurrentTab('reports')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={currentTab === 'reports' ? 'bar-chart' : 'bar-chart-outline'}
-            size={22}
-            color={currentTab === 'reports' ? theme.colors.primaryLight : theme.colors.textMuted}
-          />
-          <Text
-            style={[
-              styles.navLabel,
-              currentTab === 'reports' && { color: theme.colors.primaryLight, fontWeight: '700' },
-            ]}
+          <TouchableOpacity
+            style={styles.navItem}
+            onPress={() => setCurrentTab('reports')}
+            activeOpacity={0.7}
           >
-            Reports
-          </Text>
-        </TouchableOpacity>
+            <Ionicons
+              name={currentTab === 'reports' ? 'bar-chart' : 'bar-chart-outline'}
+              size={22}
+              color={currentTab === 'reports' ? theme.colors.primaryLight : theme.colors.textMuted}
+            />
+            <Text
+              style={[
+                styles.navLabel,
+                currentTab === 'reports' && { color: theme.colors.primaryLight, fontWeight: '700' },
+              ]}
+            >
+              Reports
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => setCurrentTab('settings')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={currentTab === 'settings' ? 'settings' : 'settings-outline'}
-            size={22}
-            color={currentTab === 'settings' ? theme.colors.primaryLight : theme.colors.textMuted}
-          />
-          <Text
-            style={[
-              styles.navLabel,
-              currentTab === 'settings' && { color: theme.colors.primaryLight, fontWeight: '700' },
-            ]}
+          <TouchableOpacity
+            style={styles.navItem}
+            onPress={() => setCurrentTab('settings')}
+            activeOpacity={0.7}
           >
-            More
-          </Text>
-        </TouchableOpacity>
-      </View>
+            <Ionicons
+              name={currentTab === 'settings' ? 'settings' : 'settings-outline'}
+              size={22}
+              color={currentTab === 'settings' ? theme.colors.primaryLight : theme.colors.textMuted}
+            />
+            <Text
+              style={[
+                styles.navLabel,
+                currentTab === 'settings' && { color: theme.colors.primaryLight, fontWeight: '700' },
+              ]}
+            >
+              More
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-      {/* Global Modals */}
-      <AddVehicleModal
-        visible={showAddVehicle}
-        editingVehicle={editingVehicle}
-        onClose={() => setShowAddVehicle(false)}
-        onSave={handleSaveVehicle}
-      />
+        {/* Global Modals */}
+        <AddVehicleModal
+          visible={showAddVehicle}
+          editingVehicle={editingVehicle}
+          onClose={() => setShowAddVehicle(false)}
+          onSave={handleSaveVehicle}
+        />
 
-      <AddFuelModal
-        visible={showAddFuel}
-        vehicle={activeVehicle}
-        currency={settings.currency}
-        onClose={() => setShowAddFuel(false)}
-        onSave={handleSaveFuel}
-      />
+        <AddFuelModal
+          visible={showAddFuel}
+          vehicle={activeVehicle}
+          currency={settings.currency}
+          onClose={() => setShowAddFuel(false)}
+          onSave={handleSaveFuel}
+        />
 
-      <AddServiceModal
-        visible={showAddService}
-        vehicle={activeVehicle}
-        plans={plans}
-        selectedPlanId={selectedPlanIdForService}
-        currency={settings.currency}
-        onClose={() => setShowAddService(false)}
-        onSave={handleSaveService}
-      />
+        <AddServiceModal
+          visible={showAddService}
+          vehicle={activeVehicle}
+          plans={plans}
+          selectedPlanId={selectedPlanIdForService}
+          currency={settings.currency}
+          onClose={() => setShowAddService(false)}
+          onSave={handleSaveService}
+        />
 
-      <AddExpenseModal
-        visible={showAddExpense}
-        vehicle={activeVehicle}
-        currency={settings.currency}
-        onClose={() => setShowAddExpense(false)}
-        onSave={handleSaveExpense}
-      />
+        <AddExpenseModal
+          visible={showAddExpense}
+          vehicle={activeVehicle}
+          currency={settings.currency}
+          onClose={() => setShowAddExpense(false)}
+          onSave={handleSaveExpense}
+        />
 
-      <AddPlanModal
-        visible={showAddPlan}
-        vehicle={activeVehicle}
-        onClose={() => setShowAddPlan(false)}
-        onSave={handleSavePlan}
-      />
+        <AddPlanModal
+          visible={showAddPlan}
+          vehicle={activeVehicle}
+          onClose={() => setShowAddPlan(false)}
+          onSave={handleSavePlan}
+        />
 
-      <OdometerUpdateModal
-        visible={showOdometerModal}
-        vehicle={activeVehicle}
-        onClose={() => setShowOdometerModal(false)}
-        onSave={handleUpdateOdometer}
-      />
+        <OdometerUpdateModal
+          visible={showOdometerModal}
+          vehicle={activeVehicle}
+          onClose={() => setShowOdometerModal(false)}
+          onSave={handleUpdateOdometer}
+        />
 
-      <ReceiptModal
-        visible={showReceiptModal}
-        imageUri={selectedReceiptUri}
-        onClose={() => setShowReceiptModal(false)}
-      />
+        <ReceiptModal
+          visible={showReceiptModal}
+          imageUri={selectedReceiptUri}
+          onClose={() => setShowReceiptModal(false)}
+        />
 
-      <AIAssistantModal
-        visible={showAIAssistant}
-        vehicle={activeVehicle}
-        fuelEntries={fuelEntries}
-        serviceRecords={serviceRecords}
-        expenses={expenses}
-        plans={plans}
-        currency={settings.currency}
-        onClose={() => setShowAIAssistant(false)}
-        onTriggerAction={handleAITriggerAction}
-      />
-    </SafeAreaView>
+        <AIAssistantModal
+          visible={showAIAssistant}
+          vehicle={activeVehicle}
+          fuelEntries={fuelEntries}
+          serviceRecords={serviceRecords}
+          expenses={expenses}
+          plans={plans}
+          currency={settings.currency}
+          onClose={() => setShowAIAssistant(false)}
+          onTriggerAction={handleAITriggerAction}
+        />
+      </SafeAreaView>
+    </ErrorBoundary>
   );
 }
 
