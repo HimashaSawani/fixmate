@@ -1,13 +1,14 @@
 /**
- * FixMate End-to-End Release Audit & Invariant Test Suite
- * Tests deterministic boundaries, idempotency, vehicle isolation, and draft safety.
+ * FixMate Invariant & State Machine Audit Test Suite (Simulated Invariant Tests)
+ * Verifies business logic, idempotency rules, monthly boundary filters, and draft safety
+ * using deterministic state invariants.
  */
 
 import { calculateUnifiedExpenses, evaluateMaintenancePlans, processFuelEntries } from './src/services/calculations';
 import { Vehicle, MaintenancePlan, FuelEntry, ServiceRecord, ExpenseRecord } from './src/types';
 
 console.log('================================================================');
-console.log('🛡️  FIXMATE END-TO-END RELEASE AUDIT & INVARIANT TEST SUITE');
+console.log('🛡️  FIXMATE SIMULATED INVARIANT & BUSINESS LOGIC AUDIT');
 console.log('================================================================\n');
 
 let passedTests = 0;
@@ -118,20 +119,17 @@ const lastMonthKey = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getM
 const lastMonthItem = expsSummary.monthlyBreakdown.find((m) => m.monthKey === lastMonthKey);
 assert(lastMonthItem?.total === 12000, `Last Month Breakdown strictly isolates 12,000`);
 
-// ----------------- TEST 2: Draft Idempotency & Stable Identifier Invariant -----------------
-console.log('\n--- TEST 2: Stable Draft ID & Duplicate Prevention Guard ---');
+// ----------------- TEST 2: Simulated Idempotency Invariant & Legitimate Duplicate Handling -----------------
+console.log('\n--- TEST 2: Simulated Idempotency Invariant & Legitimate Duplicate Handling ---');
 
-// ----------------- TEST 2: Persistent Idempotency & Legitimate Duplicate Handling -----------------
-console.log('\n--- TEST 2: Persistent Idempotency & Legitimate Duplicate Handling ---');
-
-// Simulated SQLite Persistent Idempotency Table
-const sqliteIdempotencyTable = new Map<string, { recordType: string; recordId: string; createdAt: string }>();
+// Simulated Persistent Storage Idempotency Table (Invariant Model)
+const simulatedPersistentIdempotencyTable = new Map<string, { recordType: string; recordId: string; createdAt: string }>();
 
 function simulateDbSave(idempotencyKey: string, recordType: string, recordId: string): boolean {
-  if (sqliteIdempotencyTable.has(idempotencyKey)) {
-    return false; // Idempotency violation: blocked at SQLite level
+  if (simulatedPersistentIdempotencyTable.has(idempotencyKey)) {
+    return false; // Idempotency violation: blocked by persistent unique key invariant
   }
-  sqliteIdempotencyTable.set(idempotencyKey, {
+  simulatedPersistentIdempotencyTable.set(idempotencyKey, {
     recordType,
     recordId,
     createdAt: new Date().toISOString(),
@@ -151,12 +149,12 @@ const draft1 = {
 };
 
 const save1Result = simulateDbSave(draft1.draftId, draft1.recordType, 'srv_01');
-assert(save1Result === true, 'First draft save succeeded and written to SQLite transaction');
+assert(save1Result === true, 'First draft save succeeded and written to simulated persistent store');
 
-// 2.2 Retry after simulated App Restart (In-memory state reset, SQLite table preserved)
-let reactMemoryCleared = true; // Simulating cold app reboot
+// 2.2 Retry after simulated App Restart (In-memory transient state reset, persistent table preserved)
+let transientMemoryCleared = true; // Simulating cold app reboot
 const retryAfterRestartResult = simulateDbSave(draft1.draftId, draft1.recordType, 'srv_01_retry');
-assert(retryAfterRestartResult === false, 'Persistent SQLite idempotency key strictly blocked duplicate save after app restart');
+assert(retryAfterRestartResult === false, 'Simulated persistent idempotency key strictly blocked duplicate save after simulated restart');
 
 // 2.3 Two LEGITIMATE distinct records with identical financial and date values
 const legitimateSecondRecord = {

@@ -42,6 +42,7 @@ interface ChatMessage {
   suggestedAction?: AssistantAnswer['suggestedAction'];
   timestamp: string;
   isOffline?: boolean;
+  llmProvider?: string;
   draftRecord?: AIDraftRecord;
 }
 
@@ -98,6 +99,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [backendOnline, setBackendOnline] = useState<boolean>(false);
+  const [isLlmActive, setIsLlmActive] = useState<boolean>(false);
   const [backendEngine, setBackendEngine] = useState<string>('checking...');
   
   // Draft Action State
@@ -110,6 +112,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
     if (visible) {
       checkOcrBackendHealth().then((h) => {
         setBackendOnline(h.isOnline);
+        setIsLlmActive(Boolean(h.isLlmActive));
         setBackendEngine(h.engine || (h.isOnline ? 'Active' : 'Offline'));
       });
     }
@@ -129,11 +132,12 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
             text: `Hello! I'm your FixMate Assistant for **${vehicle.name}**.\nAsk me anything about your service history, fuel economy, or tell me to log an expense (e.g. *"I did an oil change today, mileage ${vehicle.currentOdometer.toLocaleString()}, cost 18,000"*).`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOffline: !backendOnline,
+            llmProvider: backendOnline ? (isLlmActive ? 'openai_gpt4o_mini' : 'deterministic_rules') : 'on_device',
           },
         ]);
       }
     }
-  }, [visible, vehicle?.id, vehicle?.name, vehicle?.currentOdometer, backendOnline]);
+  }, [visible, vehicle?.id, vehicle?.name, vehicle?.currentOdometer, backendOnline, isLlmActive]);
 
   const handleClearChat = () => {
     if (!vehicle) return;
@@ -144,6 +148,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
         text: `Conversation cleared. How can I help with **${vehicle.name}**?`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         isOffline: !backendOnline,
+        llmProvider: backendOnline ? (isLlmActive ? 'openai_gpt4o_mini' : 'deterministic_rules') : 'on_device',
       },
     ]);
   };
@@ -187,6 +192,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
       let finalText = result.answer;
       let finalAction = result.suggestedAction;
       let isOffline = result.isOffline;
+      let llmProvider = result.llmProvider;
       let draftRecord: AIDraftRecord | undefined = result.draftRecord || undefined;
 
       // 3. Graceful offline rule-based fallback if backend offline or answer empty
@@ -203,6 +209,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
         finalText = fallback.answer;
         finalAction = fallback.suggestedAction;
         isOffline = true;
+        llmProvider = 'on_device';
       }
 
       const aiMsg: ChatMessage = {
@@ -212,6 +219,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
         suggestedAction: finalAction,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         isOffline,
+        llmProvider,
         draftRecord,
       };
 
@@ -241,6 +249,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
           suggestedAction: fallback.suggestedAction,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           isOffline: true,
+          llmProvider: 'on_device',
         },
       ]);
     } finally {
@@ -350,27 +359,45 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                   style={[
                     styles.statusPill,
                     {
-                      backgroundColor: backendOnline
+                      backgroundColor: !backendOnline
+                        ? isDark
+                          ? theme.colors.surfaceHighlight
+                          : '#F1F5F9'
+                        : isLlmActive
                         ? 'rgba(16,185,129,0.15)'
-                        : isDark
-                        ? theme.colors.surfaceHighlight
-                        : '#F1F5F9',
+                        : 'rgba(59,130,246,0.15)',
                     },
                   ]}
                 >
                   <View
                     style={[
                       styles.statusDot,
-                      { backgroundColor: backendOnline ? '#10B981' : theme.colors.textMuted },
+                      {
+                        backgroundColor: !backendOnline
+                          ? theme.colors.textMuted
+                          : isLlmActive
+                          ? '#10B981'
+                          : theme.colors.primary,
+                      },
                     ]}
                   />
                   <Text
                     style={[
                       styles.statusPillText,
-                      { color: backendOnline ? '#10B981' : theme.colors.textMuted },
+                      {
+                        color: !backendOnline
+                          ? theme.colors.textMuted
+                          : isLlmActive
+                          ? '#10B981'
+                          : theme.colors.primary,
+                      },
                     ]}
                   >
-                    {backendOnline ? 'Cloud AI' : 'On-Device'}
+                    {!backendOnline
+                      ? 'On-Device'
+                      : isLlmActive
+                      ? 'Cloud LLM'
+                      : 'Server Rules'}
                   </Text>
                 </View>
               </View>
@@ -482,7 +509,11 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
               <View style={styles.bubbleFooter}>
                 {m.sender === 'assistant' && (
                   <Text style={[styles.modeTag, { color: theme.colors.textMuted }]}>
-                    {m.isOffline ? '⚡ On-Device' : '✨ Cloud AI'}
+                    {m.llmProvider === 'openai_gpt4o_mini'
+                      ? '✨ Cloud LLM'
+                      : m.isOffline || m.llmProvider === 'on_device'
+                      ? '📱 On-Device'
+                      : '⚡ Server Rules'}
                   </Text>
                 )}
                 <Text

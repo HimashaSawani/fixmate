@@ -23,13 +23,18 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "tsx": "^4.19.2",
     "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "test": "npx tsx test_all.ts && npx tsx test_calculations.ts && npx tsx test_e2e_release_audit.ts",
+    "test:calculations": "npx tsx test_calculations.ts",
+    "test:audit": "npx tsx test_e2e_release_audit.ts"
   },
   "private": true
 }

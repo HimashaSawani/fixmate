@@ -40,7 +40,7 @@ An intelligent, privacy-conscious AI assistant that answers questions about serv
 
 ---
 
-### 3. 🧾 Smart Receipt OCR Scanner (FastAPI + OpenCV + Tesseract)
+### 3. 🧾 Smart Receipt OCR Scanner (FastAPI + EasyOCR / PyTesseract + Pillow)
 Capture paper fuel and garage invoices via camera or gallery to automatically extract metadata into structured records.
 
 <p align="center">
@@ -49,8 +49,8 @@ Capture paper fuel and garage invoices via camera or gallery to automatically ex
 </p>
 
 - **Automated Metadata Extraction**: Extracts merchant name, transaction date, total amount, and odometer readings.
-- **Adaptive Image Preprocessing**: Grayscale filtering and thresholding optimize extraction accuracy even in challenging lighting.
-- **Manual Verification Dialog**: Editable verification modal guarantees zero hallucinated fields enter your records.
+- **Adaptive Image Preprocessing**: Grayscale contrast enhancement and sharpness filtering via Pillow optimize extraction accuracy even in challenging lighting.
+- **Interactive Verification Dialog**: Editable review modal allows full user inspection and correction of all extracted fields before committing to SQLite.
 
 ---
 
@@ -84,11 +84,11 @@ Deep financial insights into total vehicle ownership costs with strict double-co
 
 ## 🔒 Privacy & Data Policy
 
-- **100% Local by Default**: All garage vehicles, odometer updates, fuel logs, and service records are stored exclusively in your local on-device SQLite database.
-- **AI & OCR Transparency**:
-  - Receipt images are transmitted only when the user explicitly triggers "Scan Receipt".
-  - Chat queries send localized vehicle summary context (current odometer, service list, recent fuel metrics) to the configured backend.
-  - Zero sensitive personal information is stored on external servers.
+- **100% Local by Default**: All garage vehicles, odometer updates, fuel logs, and service records are stored on-device in your local SQLite database.
+- **AI & OCR Data Handling**:
+  - **Receipt OCR**: Receipt images are transmitted to the backend only when the user taps "Scan Receipt". Images are processed in-memory and are never stored on external disks.
+  - **Conversational Copilot**: Prompts transmit aggregated vehicle summary context (active vehicle odometer, recent service history, fuel metrics) to the backend or AI provider (e.g. OpenAI GPT-4o-mini).
+  - **On-Device Fallback**: When the backend is unreachable or offline, FixMate operates 100% locally using deterministic on-device rule heuristics.
 
 ---
 
@@ -108,6 +108,12 @@ cd fixmate
 
 # Install dependencies
 npm install
+
+# Run TypeScript typecheck
+npm run typecheck
+
+# Run test suites
+npm test
 
 # Start local development server
 npx expo start
@@ -130,6 +136,9 @@ pip install -r requirements.txt
 
 # (Optional) Set OpenAI API Key for live cloud LLM
 set OPENAI_API_KEY=your_openai_api_key_here
+
+# (Optional) Set backend API Key for client auth
+set API_KEY=your_secret_api_key
 
 # Start the FastAPI server (accessible over local network)
 uvicorn main:app --host 0.0.0.0 --port 8000
@@ -155,25 +164,27 @@ Once the build finishes, download the `.apk` file directly to your Android devic
 
 ---
 
-## 🧪 Automated Test Verification
+## 🧪 Automated Test Verification & CI
 
-FixMate includes a strict end-to-end invariant test suite ([`test_e2e_release_audit.ts`](./test_e2e_release_audit.ts)) validating database consistency, idempotency, and isolation rules:
+FixMate includes a full invariant & calculation test suite validating calculation accuracy, idempotency rules, and draft safety:
 
 ```bash
-npx tsx test_e2e_release_audit.ts
+# Run all automated tests
+npm test
+
+# Run individual test suites
+npm run test:calculations
+npm run test:audit
 ```
 
-### Test Results (16/16 Passed):
-| # | Invariant Tested | Result |
+Continuous Integration is configured via **GitHub Actions** (`.github/workflows/ci.yml`), running automated TypeScript typechecking, test suites, and Python backend linting on every push and PR.
+
+### Test Results:
+| Suite | Scope | Result |
 |---|---|---|
-| 1 | Monthly expense filter strictly isolates current vs. prior months | ✅ Passed |
-| 2 | Persistent SQLite idempotency blocks duplicate AI draft confirmation | ✅ Passed |
-| 3 | Legitimate identical records with distinct draft IDs succeed | ✅ Passed |
-| 4 | Active vehicle switching blocks cross-vehicle record contamination | ✅ Passed |
-| 5 | Missing AI extraction fields remain strictly null without hallucination | ✅ Passed |
-| 6 | Service confirmation automatically re-evaluates maintenance status | ✅ Passed |
-| 7 | Multi-vehicle creation and independent odometer tracking | ✅ Passed |
-| 8 | Dynamic vehicle switching in AI Copilot updates context | ✅ Passed |
+| `test_all.ts` | Multi-vehicle profile, parts maintenance rules & ledger double-counting | ✅ Passed |
+| `test_calculations.ts` | Rigorous fuel interval economy (full/partial fills) & period cost/km | ✅ Passed |
+| `test_e2e_release_audit.ts` | Simulated invariant audit: boundary idempotency, draft safety & isolation | ✅ Passed |
 
 ---
 

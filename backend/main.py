@@ -94,11 +94,16 @@ class Base64ReceiptPayload(BaseModel):
 @app.get("/health", tags=["System"])
 async def health_check():
     engine_name = "easyocr" if EASYOCR_AVAILABLE else ("pytesseract" if PYTESSERACT_AVAILABLE else "heuristic_fallback")
+    openai_key = os.getenv("OPENAI_API_KEY", "")
+    is_llm_active = bool(openai_key and OPENAI_AVAILABLE)
+    llm_provider = "openai_gpt4o_mini" if is_llm_active else "deterministic_rules"
     return {
         "status": "ok",
         "service": "FixMate Vehicle Intelligence Backend",
         "version": "1.0.0",
         "ocr_engine": engine_name,
+        "is_llm_active": is_llm_active,
+        "llm_provider": llm_provider,
         "timestamp": datetime.now().isoformat(),
     }
 

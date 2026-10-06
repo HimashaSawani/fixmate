@@ -23,6 +23,7 @@ export interface ExtractedReceiptResult {
 // Android Emulator uses 10.0.2.2 to connect to host loopback; iOS / Web uses localhost
 const DEFAULT_HOST = Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://localhost:8000';
 let currentBackendUrl = DEFAULT_HOST;
+let currentBackendApiKey = '';
 
 export function setOcrBackendUrl(url: string) {
   currentBackendUrl = url;
@@ -32,23 +33,51 @@ export function getOcrBackendUrl(): string {
   return currentBackendUrl;
 }
 
+export function setOcrBackendApiKey(key: string) {
+  currentBackendApiKey = key;
+}
+
+export function getOcrBackendApiKey(): string {
+  return currentBackendApiKey;
+}
+
+function getRequestHeaders(additionalHeaders: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = { ...additionalHeaders };
+  if (currentBackendApiKey) {
+    headers['X-API-Key'] = currentBackendApiKey;
+  }
+  return headers;
+}
+
 /**
  * Checks if the FastAPI backend is running and healthy.
  */
-export async function checkOcrBackendHealth(): Promise<{ isOnline: boolean; engine?: string; error?: string }> {
+export async function checkOcrBackendHealth(): Promise<{
+  isOnline: boolean;
+  engine?: string;
+  isLlmActive?: boolean;
+  llmProvider?: string;
+  error?: string;
+}> {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000);
 
     const res = await fetch(`${currentBackendUrl}/health`, {
       method: 'GET',
+      headers: getRequestHeaders(),
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
 
     if (res.ok) {
       const data = await res.json();
-      return { isOnline: true, engine: data.ocr_engine };
+      return {
+        isOnline: true,
+        engine: data.ocr_engine,
+        isLlmActive: Boolean(data.is_llm_active),
+        llmProvider: data.llm_provider || (data.is_llm_active ? 'openai_gpt4o_mini' : 'deterministic_rules'),
+      };
     }
     return { isOnline: false, error: `HTTP ${res.status}` };
   } catch (err: any) {
@@ -79,9 +108,9 @@ export async function scanReceiptWithOcr(imageUri: string): Promise<ExtractedRec
 
     const response = await fetch(`${currentBackendUrl}/ocr/receipt/base64`, {
       method: 'POST',
-      headers: {
+      headers: getRequestHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify({
         imageBase64: base64Data,
         fileName: 'receipt.jpg',
@@ -180,7 +209,7 @@ export async function queryAssistantApi(
 
     const res = await fetch(`${currentBackendUrl}/assistant/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getRequestHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ prompt, context }),
       signal: controller.signal,
     });

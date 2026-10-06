@@ -1032,3 +1032,258 @@ export async function seedDemoData(): Promise<void> {
     });
   }
 }
+
+// ----------------- ATOMIC BACKUP RESTORE -----------------
+
+export interface BackupRestorePayload {
+  vehicles: Vehicle[];
+  fuelEntries?: FuelEntry[];
+  serviceRecords?: ServiceRecord[];
+  expenses?: ExpenseRecord[];
+  maintenancePlans?: MaintenancePlan[];
+  odometerEntries?: OdometerEntry[];
+}
+
+/**
+ * Atomically restores all backup records within a single SQLite transaction.
+ * Does not trigger nested transactions, automatic default plan generation,
+ * or extraneous side-effects.
+ */
+export async function restoreAllData(data: BackupRestorePayload): Promise<{ count: number }> {
+  let count = 0;
+
+  if (Platform.OS === 'web') {
+    if (data.vehicles && data.vehicles.length > 0) {
+      for (const v of data.vehicles) {
+        const idx = webVehicles.findIndex((x) => x.id === v.id);
+        if (idx !== -1) webVehicles[idx] = v;
+        else webVehicles.push(v);
+        count++;
+      }
+    }
+
+    if (data.fuelEntries && data.fuelEntries.length > 0) {
+      for (const f of data.fuelEntries) {
+        const idx = webFuel.findIndex((x) => x.id === f.id);
+        if (idx !== -1) webFuel[idx] = f;
+        else webFuel.push(f);
+        count++;
+      }
+    }
+
+    if (data.serviceRecords && data.serviceRecords.length > 0) {
+      for (const s of data.serviceRecords) {
+        const idx = webServices.findIndex((x) => x.id === s.id);
+        if (idx !== -1) webServices[idx] = s;
+        else webServices.push(s);
+        count++;
+      }
+    }
+
+    if (data.expenses && data.expenses.length > 0) {
+      for (const e of data.expenses) {
+        const idx = webExpenses.findIndex((x) => x.id === e.id);
+        if (idx !== -1) webExpenses[idx] = e;
+        else webExpenses.push(e);
+        count++;
+      }
+    }
+
+    if (data.maintenancePlans && data.maintenancePlans.length > 0) {
+      for (const p of data.maintenancePlans) {
+        const idx = webPlans.findIndex((x) => x.id === p.id);
+        if (idx !== -1) webPlans[idx] = p;
+        else webPlans.push(p);
+        count++;
+      }
+    }
+
+    if (data.odometerEntries && data.odometerEntries.length > 0) {
+      for (const o of data.odometerEntries) {
+        const idx = webOdometer.findIndex((x) => x.id === o.id);
+        if (idx !== -1) webOdometer[idx] = o;
+        else webOdometer.push(o);
+        count++;
+      }
+    }
+
+    return { count };
+  }
+
+  const db = await getDb();
+  if (!db) return { count: 0 };
+
+  await db.withTransactionAsync(async () => {
+    // 1. Vehicles
+    if (data.vehicles && data.vehicles.length > 0) {
+      for (const v of data.vehicles) {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO vehicles (
+            id, name, type, make, model, year, regNumber,
+            currentOdometer, photoUri, purchaseDate, vin, fuelType, isPrimary,
+            createdAt, updatedAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            v.id,
+            v.name,
+            v.type,
+            v.make,
+            v.model,
+            v.year,
+            v.regNumber || null,
+            v.currentOdometer,
+            v.photoUri || null,
+            v.purchaseDate || null,
+            v.vin || null,
+            v.fuelType || 'petrol',
+            v.isPrimary ? 1 : 0,
+            v.createdAt,
+            v.updatedAt,
+          ]
+        );
+        count++;
+      }
+    }
+
+    // 2. Fuel Entries
+    if (data.fuelEntries && data.fuelEntries.length > 0) {
+      for (const f of data.fuelEntries) {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO fuel_entries (
+            id, vehicleId, date, odometer, litres, totalCost,
+            pricePerLitre, isFullTank, fuelStation, notes, receiptUri, createdAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            f.id,
+            f.vehicleId,
+            f.date,
+            f.odometer,
+            f.litres,
+            f.totalCost,
+            f.pricePerLitre,
+            f.isFullTank ? 1 : 0,
+            f.fuelStation || null,
+            f.notes || null,
+            f.receiptUri || null,
+            f.createdAt,
+          ]
+        );
+        count++;
+      }
+    }
+
+    // 3. Service Records
+    if (data.serviceRecords && data.serviceRecords.length > 0) {
+      for (const s of data.serviceRecords) {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO service_records (
+            id, vehicleId, planId, title, serviceType, date,
+            odometer, garageName, labourCost, partsCost, totalCost,
+            notes, receiptUri, partsList, createdAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            s.id,
+            s.vehicleId,
+            s.planId || null,
+            s.title,
+            s.serviceType,
+            s.date,
+            s.odometer,
+            s.garageName || null,
+            s.labourCost,
+            s.partsCost,
+            s.totalCost,
+            s.notes || null,
+            s.receiptUri || null,
+            s.partsList || null,
+            s.createdAt,
+          ]
+        );
+        count++;
+      }
+    }
+
+    // 4. Expenses
+    if (data.expenses && data.expenses.length > 0) {
+      for (const e of data.expenses) {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO expenses (
+            id, vehicleId, category, title, amount, date,
+            odometer, vendor, notes, receiptUri, linkedServiceId,
+            linkedFuelId, createdAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            e.id,
+            e.vehicleId,
+            e.category,
+            e.title,
+            e.amount,
+            e.date,
+            e.odometer || null,
+            e.vendor || null,
+            e.notes || null,
+            e.receiptUri || null,
+            e.linkedServiceId || null,
+            e.linkedFuelId || null,
+            e.createdAt,
+          ]
+        );
+        count++;
+      }
+    }
+
+    // 5. Maintenance Plans
+    if (data.maintenancePlans && data.maintenancePlans.length > 0) {
+      for (const p of data.maintenancePlans) {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO maintenance_plans (
+            id, vehicleId, title, category, intervalKm, intervalMonths,
+            lastServiceMileage, lastServiceDate, nextDueMileage, nextDueDate,
+            notes, isCustom, createdAt, updatedAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            p.id,
+            p.vehicleId,
+            p.title,
+            p.category,
+            p.intervalKm,
+            p.intervalMonths,
+            p.lastServiceMileage,
+            p.lastServiceDate,
+            p.nextDueMileage,
+            p.nextDueDate,
+            p.notes || null,
+            p.isCustom ? 1 : 0,
+            p.createdAt,
+            p.updatedAt,
+          ]
+        );
+        count++;
+      }
+    }
+
+    // 6. Odometer Entries
+    if (data.odometerEntries && data.odometerEntries.length > 0) {
+      for (const o of data.odometerEntries) {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO odometer_entries (
+            id, vehicleId, odometer, date, notes, source, createdAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            o.id,
+            o.vehicleId,
+            o.odometer,
+            o.date,
+            o.notes || null,
+            o.source,
+            o.createdAt,
+          ]
+        );
+        count++;
+      }
+    }
+  });
+
+  return { count };
+}
+

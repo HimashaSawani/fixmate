@@ -449,18 +449,42 @@ export function calculateUnifiedExpenses(
     ...expenses
       .filter((e) => !e.linkedServiceId && !e.linkedFuelId && e.odometer !== undefined && e.odometer > 0)
       .map((e) => ({ date: e.date, odometer: e.odometer!, cost: e.amount })),
-  ].filter((e) => e.odometer > 0);
+  ].filter((e) => e.odometer > 0 && !isNaN(new Date(e.date).getTime()));
 
   let trackedDistance = 0;
   let costPerKm: number | null = null;
 
   if (datedEntries.length >= 2) {
-    const minOdo = Math.min(...datedEntries.map((e) => e.odometer));
-    const maxOdo = Math.max(...datedEntries.map((e) => e.odometer));
+    const odoValues = datedEntries.map((e) => e.odometer);
+    const minOdo = Math.min(...odoValues);
+    const maxOdo = Math.max(...odoValues);
     trackedDistance = maxOdo - minOdo;
 
     if (trackedDistance > 0) {
-      costPerKm = Number((grandTotal / trackedDistance).toFixed(2));
+      const timestamps = datedEntries.map((e) => new Date(e.date).getTime());
+      const minTime = Math.min(...timestamps);
+      const maxTime = Math.max(...timestamps);
+
+      const isWithinPeriod = (dateStr: string) => {
+        const t = new Date(dateStr).getTime();
+        return !isNaN(t) && t >= minTime && t <= maxTime;
+      };
+
+      // Aggregate only expenses that occurred within the recorded odometer period
+      const periodFuel = fuelEntries
+        .filter((f) => isWithinPeriod(f.date))
+        .reduce((sum, f) => sum + f.totalCost, 0);
+
+      const periodService = serviceRecords
+        .filter((s) => isWithinPeriod(s.date))
+        .reduce((sum, s) => sum + s.totalCost, 0);
+
+      const periodExpenses = expenses
+        .filter((e) => !e.linkedServiceId && !e.linkedFuelId && isWithinPeriod(e.date))
+        .reduce((sum, e) => sum + e.amount, 0);
+
+      const periodTotalCost = periodFuel + periodService + periodExpenses;
+      costPerKm = Number((periodTotalCost / trackedDistance).toFixed(2));
     }
   }
 

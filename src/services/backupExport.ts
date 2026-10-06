@@ -6,28 +6,38 @@ import {
   getServiceRecords,
   getExpenses,
   getMaintenancePlans,
-  insertVehicle,
-  insertFuelEntry,
-  insertServiceRecord,
-  insertExpense,
-  insertMaintenancePlan,
-  getDb,
+  restoreAllData,
+  BackupRestorePayload,
 } from '../database/db';
-import { Vehicle } from '../types';
+import { Vehicle, FuelEntry, ServiceRecord, ExpenseRecord, MaintenancePlan, OdometerEntry } from '../types';
+
+export interface VersionedBackupPayload {
+  schemaVersion: number;
+  app: string;
+  version: string;
+  exportDate: string;
+  vehicles: Vehicle[];
+  fuelEntries: (FuelEntry & { receiptBase64?: string })[];
+  serviceRecords: (ServiceRecord & { receiptBase64?: string })[];
+  expenses: (ExpenseRecord & { receiptBase64?: string })[];
+  maintenancePlans: MaintenancePlan[];
+  odometerEntries?: OdometerEntry[];
+}
 
 export async function exportAllDataToJson(vehicleId?: string): Promise<string> {
   const vehicles = await getAllVehicles();
   const targetVehicles = vehicleId ? vehicles.filter((v) => v.id === vehicleId) : vehicles;
 
-  const exportPayload: any = {
-    exportDate: new Date().toISOString(),
+  const exportPayload: VersionedBackupPayload = {
+    schemaVersion: 1,
     app: 'FixMate - Vehicle Manager',
     version: '1.0.0',
+    exportDate: new Date().toISOString(),
     vehicles: targetVehicles,
-    fuelEntries: [] as any[],
-    serviceRecords: [] as any[],
-    expenses: [] as any[],
-    maintenancePlans: [] as any[],
+    fuelEntries: [],
+    serviceRecords: [],
+    expenses: [],
+    maintenancePlans: [],
   };
 
   for (const v of targetVehicles) {
@@ -129,83 +139,197 @@ async function restoreReceiptImage(base64Data?: string, originalUri?: string): P
   }
 }
 
+/**
+ * Validates version, structure, types, dates, numbers, and relationships of backup JSON.
+ */
+export function validateBackupPayload(data: any): VersionedBackupPayload {
+  if (!data || typeof data !== 'object') {
+    throw new Error('Invalid backup file: root must be a JSON object.');
+  }
+
+  if (!Array.isArray(data.vehicles) || data.vehicles.length === 0) {
+    throw new Error('Invalid backup file: "vehicles" array is missing or empty.');
+  }
+
+  const vehicleIds = new Set<string>();
+
+  // Validate vehicles
+  for (let i = 0; i < data.vehicles.length; i++) {
+    const v = data.vehicles[i];
+    if (!v.id || typeof v.id !== 'string') {
+      throw new Error(`Vehicle at index ${i} is missing a valid 'id'.`);
+    }
+    if (!v.name || typeof v.name !== 'string') {
+      throw new Error(`Vehicle '${v.id}' is missing a valid 'name'.`);
+    }
+    if (typeof v.currentOdometer !== 'number' || isNaN(v.currentOdometer) || v.currentOdometer < 0) {
+      throw new Error(`Vehicle '${v.id}' has an invalid 'currentOdometer'.`);
+    }
+    if (v.createdAt && isNaN(new Date(v.createdAt).getTime())) {
+      throw new Error(`Vehicle '${v.id}' has an invalid 'createdAt' date.`);
+    }
+    vehicleIds.add(v.id);
+  }
+
+  // Validate fuel entries & referential integrity
+  if (data.fuelEntries) {
+    if (!Array.isArray(data.fuelEntries)) {
+      throw new Error('Invalid backup file: "fuelEntries" must be an array.');
+    }
+    for (let i = 0; i < data.fuelEntries.length; i++) {
+      const f = data.fuelEntries[i];
+      if (!f.id || typeof f.id !== 'string') {
+        throw new Error(`Fuel entry at index ${i} has an invalid 'id'.`);
+      }
+      if (!f.vehicleId || !vehicleIds.has(f.vehicleId)) {
+        throw new Error(`Fuel entry '${f.id}' references unknown vehicleId '${f.vehicleId}'.`);
+      }
+      if (typeof f.litres !== 'number' || isNaN(f.litres) || f.litres < 0) {
+        throw new Error(`Fuel entry '${f.id}' has an invalid 'litres' quantity.`);
+      }
+      if (typeof f.totalCost !== 'number' || isNaN(f.totalCost) || f.totalCost < 0) {
+        throw new Error(`Fuel entry '${f.id}' has an invalid 'totalCost'.`);
+      }
+      if (f.date && isNaN(new Date(f.date).getTime())) {
+        throw new Error(`Fuel entry '${f.id}' has an invalid 'date'.`);
+      }
+    }
+  }
+
+  // Validate service records & referential integrity
+  if (data.serviceRecords) {
+    if (!Array.isArray(data.serviceRecords)) {
+      throw new Error('Invalid backup file: "serviceRecords" must be an array.');
+    }
+    for (let i = 0; i < data.serviceRecords.length; i++) {
+      const s = data.serviceRecords[i];
+      if (!s.id || typeof s.id !== 'string') {
+        throw new Error(`Service record at index ${i} has an invalid 'id'.`);
+      }
+      if (!s.vehicleId || !vehicleIds.has(s.vehicleId)) {
+        throw new Error(`Service record '${s.id}' references unknown vehicleId '${s.vehicleId}'.`);
+      }
+      if (typeof s.totalCost !== 'number' || isNaN(s.totalCost) || s.totalCost < 0) {
+        throw new Error(`Service record '${s.id}' has an invalid 'totalCost'.`);
+      }
+      if (s.date && isNaN(new Date(s.date).getTime())) {
+        throw new Error(`Service record '${s.id}' has an invalid 'date'.`);
+      }
+    }
+  }
+
+  // Validate expenses & referential integrity
+  if (data.expenses) {
+    if (!Array.isArray(data.expenses)) {
+      throw new Error('Invalid backup file: "expenses" must be an array.');
+    }
+    for (let i = 0; i < data.expenses.length; i++) {
+      const e = data.expenses[i];
+      if (!e.id || typeof e.id !== 'string') {
+        throw new Error(`Expense at index ${i} has an invalid 'id'.`);
+      }
+      if (!e.vehicleId || !vehicleIds.has(e.vehicleId)) {
+        throw new Error(`Expense '${e.id}' references unknown vehicleId '${e.vehicleId}'.`);
+      }
+      if (typeof e.amount !== 'number' || isNaN(e.amount) || e.amount < 0) {
+        throw new Error(`Expense '${e.id}' has an invalid 'amount'.`);
+      }
+      if (e.date && isNaN(new Date(e.date).getTime())) {
+        throw new Error(`Expense '${e.id}' has an invalid 'date'.`);
+      }
+    }
+  }
+
+  // Validate maintenance plans & referential integrity
+  if (data.maintenancePlans) {
+    if (!Array.isArray(data.maintenancePlans)) {
+      throw new Error('Invalid backup file: "maintenancePlans" must be an array.');
+    }
+    for (let i = 0; i < data.maintenancePlans.length; i++) {
+      const p = data.maintenancePlans[i];
+      if (!p.id || typeof p.id !== 'string') {
+        throw new Error(`Maintenance plan at index ${i} has an invalid 'id'.`);
+      }
+      if (!p.vehicleId || !vehicleIds.has(p.vehicleId)) {
+        throw new Error(`Maintenance plan '${p.id}' references unknown vehicleId '${p.vehicleId}'.`);
+      }
+      if (typeof p.intervalKm !== 'number' || isNaN(p.intervalKm) || p.intervalKm < 0) {
+        throw new Error(`Maintenance plan '${p.id}' has an invalid 'intervalKm'.`);
+      }
+    }
+  }
+
+  return {
+    schemaVersion: data.schemaVersion || 1,
+    app: data.app || 'FixMate',
+    version: data.version || '1.0.0',
+    exportDate: data.exportDate || new Date().toISOString(),
+    vehicles: data.vehicles,
+    fuelEntries: data.fuelEntries || [],
+    serviceRecords: data.serviceRecords || [],
+    expenses: data.expenses || [],
+    maintenancePlans: data.maintenancePlans || [],
+    odometerEntries: data.odometerEntries || [],
+  };
+}
+
 export async function restoreBackupFromJsonString(jsonString: string): Promise<{ success: boolean; count: number }> {
-  const data = JSON.parse(jsonString);
-  if (!data || !data.vehicles || !Array.isArray(data.vehicles)) {
-    throw new Error('Invalid FixMate backup JSON structure.');
-  }
-
-  let count = 0;
-  const db = await getDb();
-
-  // Begin transaction if SQLite is available
-  if (db) {
-    await db.execAsync('BEGIN TRANSACTION;');
-  }
+  let parsedRaw: any;
   try {
-    // 1. Insert Vehicles
-    for (const v of data.vehicles) {
-      await insertVehicle(v);
-      count++;
-    }
-
-    // 2. Insert Fuel Entries (restoring images)
-    if (Array.isArray(data.fuelEntries)) {
-      for (const f of data.fuelEntries) {
-        const itemToSave = { ...f };
-        if (itemToSave.receiptBase64) {
-          itemToSave.receiptUri = await restoreReceiptImage(itemToSave.receiptBase64, itemToSave.receiptUri);
-          delete itemToSave.receiptBase64;
-        }
-        await insertFuelEntry(itemToSave);
-        count++;
-      }
-    }
-
-    // 3. Insert Service Records (restoring images)
-    if (Array.isArray(data.serviceRecords)) {
-      for (const s of data.serviceRecords) {
-        const itemToSave = { ...s };
-        if (itemToSave.receiptBase64) {
-          itemToSave.receiptUri = await restoreReceiptImage(itemToSave.receiptBase64, itemToSave.receiptUri);
-          delete itemToSave.receiptBase64;
-        }
-        await insertServiceRecord(itemToSave);
-        count++;
-      }
-    }
-
-    // 4. Insert Expenses (restoring images)
-    if (Array.isArray(data.expenses)) {
-      for (const e of data.expenses) {
-        const itemToSave = { ...e };
-        if (itemToSave.receiptBase64) {
-          itemToSave.receiptUri = await restoreReceiptImage(itemToSave.receiptBase64, itemToSave.receiptUri);
-          delete itemToSave.receiptBase64;
-        }
-        await insertExpense(itemToSave);
-        count++;
-      }
-    }
-
-    // 5. Insert Maintenance Plans
-    if (Array.isArray(data.maintenancePlans)) {
-      for (const p of data.maintenancePlans) {
-        await insertMaintenancePlan(p);
-        count++;
-      }
-    }
-
-    if (db) {
-      await db.execAsync('COMMIT;');
-    }
-    return { success: true, count };
+    parsedRaw = JSON.parse(jsonString);
   } catch (err) {
-    if (db) {
-      await db.execAsync('ROLLBACK;');
-    }
-    throw err;
+    throw new Error('Backup file contains invalid JSON syntax.');
   }
+
+  // 1. Strict Schema & Referential Validation
+  const validated = validateBackupPayload(parsedRaw);
+
+  // 2. Pre-process base64 receipt images asynchronously before the database transaction
+  const processedFuel = await Promise.all(
+    validated.fuelEntries.map(async (f) => {
+      const copy = { ...f };
+      if (copy.receiptBase64) {
+        copy.receiptUri = await restoreReceiptImage(copy.receiptBase64, copy.receiptUri);
+        delete copy.receiptBase64;
+      }
+      return copy;
+    })
+  );
+
+  const processedServices = await Promise.all(
+    validated.serviceRecords.map(async (s) => {
+      const copy = { ...s };
+      if (copy.receiptBase64) {
+        copy.receiptUri = await restoreReceiptImage(copy.receiptBase64, copy.receiptUri);
+        delete copy.receiptBase64;
+      }
+      return copy;
+    })
+  );
+
+  const processedExpenses = await Promise.all(
+    validated.expenses.map(async (e) => {
+      const copy = { ...e };
+      if (copy.receiptBase64) {
+        copy.receiptUri = await restoreReceiptImage(copy.receiptBase64, copy.receiptUri);
+        delete copy.receiptBase64;
+      }
+      return copy;
+    })
+  );
+
+  // 3. Atomically restore all data in a single SQLite transaction
+  const payload: BackupRestorePayload = {
+    vehicles: validated.vehicles,
+    fuelEntries: processedFuel,
+    serviceRecords: processedServices,
+    expenses: processedExpenses,
+    maintenancePlans: validated.maintenancePlans,
+    odometerEntries: validated.odometerEntries,
+  };
+
+  const result = await restoreAllData(payload);
+  return { success: true, count: result.count };
 }
 
 export async function exportVehicleToCsv(vehicle: Vehicle): Promise<string> {
