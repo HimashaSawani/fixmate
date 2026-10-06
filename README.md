@@ -16,7 +16,7 @@
 A modern, unified vehicle health dashboard displaying real-time vehicle status, active odometer readings, monthly expenditure summaries, quick-action shortcuts, and recent transaction history.
 
 <p align="center">
-  <img src="./assets/screenshots/02_ai_copilot.jpg" width="320" alt="Central Dashboard" />
+<img width="342" height="1329" alt="WhatsApp Image 2026-10-06 at 12 09 56" src="https://github.com/user-attachments/assets/dd6fe1ef-fe69-478b-bc2d-6eb4c1793d0d" />
 </p>
 
 - **Multi-Vehicle Garage**: Manage cars, SUVs, motorcycles, vans, and trucks with completely isolated service schedules.
@@ -29,7 +29,8 @@ A modern, unified vehicle health dashboard displaying real-time vehicle status, 
 An intelligent, privacy-conscious AI assistant that answers questions about service history and fuel economy, and generates pre-filled draft records with human-in-the-loop review.
 
 <p align="center">
-  <img src="./assets/screenshots/01_dashboard.jpg" width="320" alt="FixMate Copilot" />
+  <img width="380" height="1329" alt="WhatsApp Image 2026-10-06 at 12 09 56 (1)" src="https://github.com/user-attachments/assets/097c7598-12d8-46cf-ae6a-f64f790de69c" />
+
 </p>
 
 - **Natural Language Parsing**: Ask queries like *"When is my next oil change?"* or command *"I did an oil change today, mileage 45,000, cost 18,000"*.
@@ -43,7 +44,7 @@ An intelligent, privacy-conscious AI assistant that answers questions about serv
 Capture paper fuel and garage invoices via camera or gallery to automatically extract metadata into structured records.
 
 <p align="center">
-  <img src="./assets/screenshots/05_reports_analytics.jpg" width="320" alt="Smart Receipt OCR" />
+<img width="380" height="1329" alt="WhatsApp Image 2026-10-06 at 12 09 57" src="https://github.com/user-attachments/assets/dc763320-d0b0-4fb5-95d4-cfd7e89d6f9f" />
 </p>
 
 - **Automated Metadata Extraction**: Extracts merchant name, transaction date, total amount, and odometer readings.
@@ -56,7 +57,7 @@ Capture paper fuel and garage invoices via camera or gallery to automatically ex
 Intelligent maintenance tracking with automatic scheduling, explainable driving forecasts, and native notification alerts.
 
 <p align="center">
-  <img src="./assets/screenshots/03_receipt_ocr.jpg" width="320" alt="Maintenance Schedules" />
+<img width="380" height="1329" alt="WhatsApp Image 2026-10-06 at 12 09 57 (2)" src="https://github.com/user-attachments/assets/247e19f5-cfce-4893-8c31-e084e8fd3bc1" />
 </p>
 
 - **"Whichever Comes First" Rule**: Evaluates maintenance due status based on distance intervals (km) or calendar intervals (months).
@@ -69,7 +70,7 @@ Intelligent maintenance tracking with automatic scheduling, explainable driving 
 Deep financial insights into total vehicle ownership costs with strict double-counting prevention.
 
 <p align="center">
-  <img src="./assets/screenshots/04_maintenance_plans.jpg" width="320" alt="Financial Analytics & Reports" />
+<img width="360" height="1329" alt="WhatsApp Image 2026-10-06 at 12 09 57 (1)" src="https://github.com/user-attachments/assets/4a4d6ec7-6092-439f-9140-f3bfcf8cb714" />
 </p>
 
 - **Strict Financial Isolation**: Separates fuel logs, service invoices, and standalone expenses to prevent double-counting.
