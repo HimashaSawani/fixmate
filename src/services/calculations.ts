@@ -298,7 +298,7 @@ export function calculateUnifiedExpenses(
   currentMonthTotal: number;
   currentMonthLabel: string;
   trackedDistance: number;
-  costPerKm: number;
+  costPerKm: number | null;
 } {
   // 1. Fuel Total
   let fuelTotal = fuelEntries.reduce((sum, f) => sum + f.totalCost, 0);
@@ -426,26 +426,55 @@ export function calculateUnifiedExpenses(
   const currentMonthTotal = currentMonthItem ? Number(currentMonthItem.total.toFixed(2)) : 0;
   const currentMonthLabel = now.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
-  // Overall Cost per Km based on distance travelled over the recorded period
-  // We collect odometers from fuel entries, service records, and expenses
-  const allRecordedOdometers: number[] = [
-    ...fuelEntries.map((f) => f.odometer),
-    ...serviceRecords.map((s) => s.odometer),
-    ...expenses.filter((e) => e.odometer !== undefined && e.odometer > 0).map((e) => e.odometer!),
-  ].filter((odo) => typeof odo === 'number' && odo > 0);
-
-  let trackedDistance = 0;
-  if (allRecordedOdometers.length >= 2) {
-    const minOdo = Math.min(...allRecordedOdometers);
-    const maxOdo = Math.max(...allRecordedOdometers);
-    trackedDistance = maxOdo - minOdo;
+  // Overall Cost per Km based on distance and expenses over the exact recorded period
+  interface DatedEntry {
+    date: string;
+    odometer: number;
+    cost: number;
   }
 
-  let costPerKm = 0;
-  if (trackedDistance > 0) {
-    costPerKm = Number((grandTotal / trackedDistance).toFixed(2));
-  } else if (vehicle && vehicle.currentOdometer > 0) {
-    costPerKm = Number((grandTotal / vehicle.currentOdometer).toFixed(2));
+  const datedEntries: DatedEntry[] = [
+    ...fuelEntries.map((f) => ({ date: f.date, odometer: f.odometer, cost: f.totalCost })),
+    ...serviceRecords.map((s) => ({ date: s.date, odometer: s.odometer, cost: s.totalCost })),
+    ...expenses
+      .filter((e) => !e.linkedServiceId && !e.linkedFuelId && e.odometer !== undefined && e.odometer > 0)
+      .map((e) => ({ date: e.date, odometer: e.odometer!, cost: e.amount })),
+  ].filter((e) => e.odometer > 0);
+
+  let trackedDistance = 0;
+  let costPerKm: number | null = null;
+
+  if (datedEntries.length >= 2) {
+    const sortedByDate = [...datedEntries].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+    const minOdo = Math.min(...sortedByDate.map((e) => e.odometer));
+    const maxOdo = Math.max(...sortedByDate.map((e) => e.odometer));
+    trackedDistance = maxOdo - minOdo;
+
+    if (trackedDistance > 0) {
+      const minDate = new Date(sortedByDate[0].date).getTime();
+      const maxDate = new Date(sortedByDate[sortedByDate.length - 1].date).getTime();
+
+      // Total costs that occurred within this tracked period [minDate, maxDate]
+      let periodTotalCost = 0;
+      fuelEntries.forEach((f) => {
+        const t = new Date(f.date).getTime();
+        if (t >= minDate && t <= maxDate) periodTotalCost += f.totalCost;
+      });
+      serviceRecords.forEach((s) => {
+        const t = new Date(s.date).getTime();
+        if (t >= minDate && t <= maxDate) periodTotalCost += s.totalCost;
+      });
+      expenses.forEach((e) => {
+        if (!e.linkedServiceId && !e.linkedFuelId) {
+          const t = new Date(e.date).getTime();
+          if (t >= minDate && t <= maxDate) periodTotalCost += e.amount;
+        }
+      });
+
+      costPerKm = Number((periodTotalCost / trackedDistance).toFixed(2));
+    }
   }
 
   return {

@@ -143,7 +143,7 @@ export interface VehicleHealthSummary {
   otherSpent: number;
   totalDistance: number;
   averageKmL: number;
-  costPerKm: number;
+  costPerKm: number | null;
   overdueServicesCount: number;
   dueSoonServicesCount: number;
   goodServicesCount: number;

@@ -170,7 +170,7 @@ export function queryVehicleAssistant(
     text += `• **Repairs:** ${currency} ${result.repairTotal.toLocaleString()}\n`;
     text += `• **Insurance & Tax:** ${currency} ${(result.insuranceTotal + result.registrationTotal).toLocaleString()}\n`;
     text += `• **Accessories & Other:** ${currency} ${(result.accessoriesTotal + result.otherTotal).toLocaleString()}\n\n`;
-    text += `📊 **Cost Per Kilometre:** ${currency} ${result.costPerKm.toFixed(2)}/km\n*(Calculated over ${vehicle.currentOdometer.toLocaleString()} km)*`;
+    text += `📊 **Cost Per Kilometre:** ${result.costPerKm !== null ? `${currency} ${result.costPerKm.toFixed(2)}/km` : 'N/A'}\n*(Calculated over recorded distance)*`;
 
     return {
       answer: text,

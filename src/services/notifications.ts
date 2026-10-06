@@ -1,7 +1,17 @@
-import { Platform } from 'react-native';
 import { MaintenancePlan, Vehicle } from '../types';
 
 let NotificationsModule: any = null;
+let PlatformModule: any = null;
+
+function getPlatform(): any {
+  if (PlatformModule) return PlatformModule;
+  try {
+    PlatformModule = require('react-native').Platform;
+    return PlatformModule;
+  } catch {
+    return { OS: 'web' };
+  }
+}
 
 function getNotificationsModule(): any | null {
   if (NotificationsModule) return NotificationsModule;
@@ -37,6 +47,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   if (!Notifications) return false;
 
   try {
+    const Platform = getPlatform();
     if (Platform.OS === 'android' && typeof Notifications.setNotificationChannelAsync === 'function') {
       await Notifications.setNotificationChannelAsync('fixmate-maintenance', {
         name: 'Vehicle Maintenance Alerts',
@@ -62,6 +73,34 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   }
 }
 
+export async function getNotificationPermissionStatus(): Promise<'granted' | 'denied' | 'undetermined'> {
+  const Notifications = getNotificationsModule();
+  if (!Notifications) return 'undetermined';
+
+  try {
+    if (typeof Notifications.getPermissionsAsync === 'function') {
+      const { status } = await Notifications.getPermissionsAsync();
+      return status;
+    }
+    return 'undetermined';
+  } catch {
+    return 'undetermined';
+  }
+}
+
+export async function cancelScheduledMaintenanceNotification(planId: string): Promise<void> {
+  const Notifications = getNotificationsModule();
+  if (!Notifications) return;
+
+  try {
+    if (typeof Notifications.cancelScheduledNotificationAsync === 'function') {
+      await Notifications.cancelScheduledNotificationAsync(`fixmate_plan_${planId}`);
+    }
+  } catch (err) {
+    console.warn(`Failed to cancel notification for plan ${planId}:`, err);
+  }
+}
+
 export async function scheduleMaintenanceNotification(
   vehicle: Vehicle,
   plan: MaintenancePlan,
@@ -82,11 +121,15 @@ export async function scheduleMaintenanceNotification(
       return null;
     }
 
+    // Cancel previous scheduled reminder for this plan to avoid duplicates
+    await cancelScheduledMaintenanceNotification(plan.id);
+
     if (typeof Notifications.scheduleNotificationAsync === 'function') {
       const id = await Notifications.scheduleNotificationAsync({
+        identifier: `fixmate_plan_${plan.id}`,
         content: {
           title: `🔧 FixMate Reminder: ${vehicle.name}`,
-          body: `${plan.title} is due around ${dueDate.toLocaleDateString()} (or at ${plan.nextDueMileage} km)!`,
+          body: `${plan.title} is due around ${dueDate.toLocaleDateString()} (or at ${plan.nextDueMileage.toLocaleString()} km)!`,
           data: { vehicleId: vehicle.id, planId: plan.id },
         },
         trigger: {
@@ -118,9 +161,10 @@ export async function sendInstantOdometerAlert(
 
     if (typeof Notifications.scheduleNotificationAsync === 'function') {
       await Notifications.scheduleNotificationAsync({
+        identifier: `fixmate_instant_${vehicle.id}_${Date.now()}`,
         content: {
           title: `⚠️ Service Due: ${vehicle.name}`,
-          body: `${planTitle} has reached the service threshold (${dueMileage} km). Please schedule your service.`,
+          body: `${planTitle} has reached the service threshold (${dueMileage.toLocaleString()} km). Please schedule your service.`,
           data: { vehicleId: vehicle.id },
         },
         trigger: null, // Send immediately

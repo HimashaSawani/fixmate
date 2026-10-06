@@ -158,10 +158,18 @@ export async function initDatabase(): Promise<void> {
       value TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS idempotency_keys (
+      key TEXT PRIMARY KEY,
+      recordType TEXT NOT NULL,
+      recordId TEXT NOT NULL,
+      createdAt TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_fuel_vehicle_date ON fuel_entries(vehicleId, date);
     CREATE INDEX IF NOT EXISTS idx_service_vehicle_date ON service_records(vehicleId, date);
     CREATE INDEX IF NOT EXISTS idx_expenses_vehicle_date ON expenses(vehicleId, date);
     CREATE INDEX IF NOT EXISTS idx_odometer_vehicle ON odometer_entries(vehicleId, date);
+    CREATE INDEX IF NOT EXISTS idx_idempotency_key ON idempotency_keys(key);
   `);
 
   const settingsCount = await db.getFirstAsync<{ count: number }>(
@@ -409,36 +417,69 @@ export async function getOdometerEntries(vehicleId: string): Promise<OdometerEnt
   );
 }
 
-// ----------------- FUEL ENTRIES -----------------
+// ----------------- IDEMPOTENCY KEYS -----------------
 
-export async function insertFuelEntry(entry: FuelEntry): Promise<void> {
+export async function checkIdempotencyKey(key: string): Promise<boolean> {
+  if (!key) return false;
   if (Platform.OS === 'web') {
-    webFuel.unshift(entry);
-    await updateVehicleOdometer(entry.vehicleId, entry.odometer, 'fuel', `Fuel fill-up: ${entry.litres.toFixed(1)}L`);
-    return;
+    return webIdempotencyKeys.has(key);
   }
   const db = await getDb();
-  if (!db) return;
-  await db.runAsync(
-    `INSERT INTO fuel_entries (id, vehicleId, date, odometer, litres, totalCost, pricePerLitre, isFullTank, fuelStation, notes, receiptUri, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      entry.id,
-      entry.vehicleId,
-      entry.date,
-      entry.odometer,
-      entry.litres,
-      entry.totalCost,
-      entry.pricePerLitre,
-      entry.isFullTank ? 1 : 0,
-      entry.fuelStation || null,
-      entry.notes || null,
-      entry.receiptUri || null,
-      entry.createdAt,
-    ]
+  if (!db) return false;
+  const row = await db.getFirstAsync<{ key: string }>(
+    'SELECT key FROM idempotency_keys WHERE key = ?',
+    [key]
   );
+  return !!row;
+}
+
+// ----------------- FUEL ENTRIES -----------------
+
+export async function insertFuelEntry(entry: FuelEntry, idempotencyKey?: string): Promise<boolean> {
+  if (idempotencyKey) {
+    const exists = await checkIdempotencyKey(idempotencyKey);
+    if (exists) return false; // Already saved, duplicate prevented
+  }
+
+  if (Platform.OS === 'web') {
+    webFuel.unshift(entry);
+    if (idempotencyKey) webIdempotencyKeys.add(idempotencyKey);
+    await updateVehicleOdometer(entry.vehicleId, entry.odometer, 'fuel', `Fuel fill-up: ${entry.litres.toFixed(1)}L`);
+    return true;
+  }
+  const db = await getDb();
+  if (!db) return false;
+
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `INSERT INTO fuel_entries (id, vehicleId, date, odometer, litres, totalCost, pricePerLitre, isFullTank, fuelStation, notes, receiptUri, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        entry.id,
+        entry.vehicleId,
+        entry.date,
+        entry.odometer,
+        entry.litres,
+        entry.totalCost,
+        entry.pricePerLitre,
+        entry.isFullTank ? 1 : 0,
+        entry.fuelStation || null,
+        entry.notes || null,
+        entry.receiptUri || null,
+        entry.createdAt,
+      ]
+    );
+
+    if (idempotencyKey) {
+      await db.runAsync(
+        'INSERT INTO idempotency_keys (key, recordType, recordId, createdAt) VALUES (?, ?, ?, ?)',
+        [idempotencyKey, 'fuel', entry.id, new Date().toISOString()]
+      );
+    }
+  });
 
   await updateVehicleOdometer(entry.vehicleId, entry.odometer, 'fuel', `Fuel fill-up: ${entry.litres.toFixed(1)}L`);
+  return true;
 }
 
 export async function getFuelEntries(vehicleId: string): Promise<FuelEntry[]> {
@@ -619,9 +660,15 @@ export async function createDefaultMaintenancePlans(vehicleId: string, currentOd
 
 // ----------------- SERVICE RECORDS -----------------
 
-export async function insertServiceRecord(record: ServiceRecord): Promise<void> {
+export async function insertServiceRecord(record: ServiceRecord, idempotencyKey?: string): Promise<boolean> {
+  if (idempotencyKey) {
+    const exists = await checkIdempotencyKey(idempotencyKey);
+    if (exists) return false; // Duplicate prevented
+  }
+
   if (Platform.OS === 'web') {
     webServices.unshift(record);
+    if (idempotencyKey) webIdempotencyKeys.add(idempotencyKey);
     if (record.planId) {
       const plan = webPlans.find((p) => p.id === record.planId);
       if (plan) {
@@ -633,64 +680,75 @@ export async function insertServiceRecord(record: ServiceRecord): Promise<void> 
       }
     }
     await updateVehicleOdometer(record.vehicleId, record.odometer, 'service', `Service: ${record.title}`);
-    return;
+    return true;
   }
 
   const db = await getDb();
-  if (!db) return;
-  await db.runAsync(
-    `INSERT INTO service_records (id, vehicleId, planId, title, serviceType, date, odometer, garageName, labourCost, partsCost, totalCost, notes, receiptUri, partsList, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      record.id,
-      record.vehicleId,
-      record.planId || null,
-      record.title,
-      record.serviceType,
-      record.date,
-      record.odometer,
-      record.garageName || null,
-      record.labourCost,
-      record.partsCost,
-      record.totalCost,
-      record.notes || null,
-      record.receiptUri || null,
-      record.partsList || null,
-      record.createdAt,
-    ]
-  );
+  if (!db) return false;
 
-  if (record.planId) {
-    const plan = await db.getFirstAsync<MaintenancePlan>(
-      'SELECT * FROM maintenance_plans WHERE id = ?',
-      [record.planId]
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `INSERT INTO service_records (id, vehicleId, planId, title, serviceType, date, odometer, garageName, labourCost, partsCost, totalCost, notes, receiptUri, partsList, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        record.id,
+        record.vehicleId,
+        record.planId || null,
+        record.title,
+        record.serviceType,
+        record.date,
+        record.odometer,
+        record.garageName || null,
+        record.labourCost,
+        record.partsCost,
+        record.totalCost,
+        record.notes || null,
+        record.receiptUri || null,
+        record.partsList || null,
+        record.createdAt,
+      ]
     );
-    if (plan) {
-      const nextDueMileage = record.odometer + plan.intervalKm;
-      const svcDate = new Date(record.date);
-      const nextDueDate = new Date(
-        svcDate.getFullYear(),
-        svcDate.getMonth() + plan.intervalMonths,
-        svcDate.getDate()
-      ).toISOString();
 
+    if (idempotencyKey) {
       await db.runAsync(
-        `UPDATE maintenance_plans
-         SET lastServiceMileage = ?, lastServiceDate = ?, nextDueMileage = ?, nextDueDate = ?, updatedAt = ?
-         WHERE id = ?`,
-        [
-          record.odometer,
-          record.date,
-          nextDueMileage,
-          nextDueDate,
-          new Date().toISOString(),
-          record.planId,
-        ]
+        'INSERT INTO idempotency_keys (key, recordType, recordId, createdAt) VALUES (?, ?, ?, ?)',
+        [idempotencyKey, 'service', record.id, new Date().toISOString()]
       );
     }
-  }
+
+    if (record.planId) {
+      const plan = await db.getFirstAsync<MaintenancePlan>(
+        'SELECT * FROM maintenance_plans WHERE id = ?',
+        [record.planId]
+      );
+      if (plan) {
+        const nextDueMileage = record.odometer + plan.intervalKm;
+        const svcDate = new Date(record.date);
+        const nextDueDate = new Date(
+          svcDate.getFullYear(),
+          svcDate.getMonth() + plan.intervalMonths,
+          svcDate.getDate()
+        ).toISOString();
+
+        await db.runAsync(
+          `UPDATE maintenance_plans
+           SET lastServiceMileage = ?, lastServiceDate = ?, nextDueMileage = ?, nextDueDate = ?, updatedAt = ?
+           WHERE id = ?`,
+          [
+            record.odometer,
+            record.date,
+            nextDueMileage,
+            nextDueDate,
+            new Date().toISOString(),
+            record.planId,
+          ]
+        );
+      }
+    }
+  });
 
   await updateVehicleOdometer(record.vehicleId, record.odometer, 'service', `Service: ${record.title}`);
+  return true;
 }
 
 export async function getServiceRecords(vehicleId: string): Promise<ServiceRecord[]> {
@@ -717,39 +775,57 @@ export async function deleteServiceRecord(id: string): Promise<void> {
 
 // ----------------- EXPENSES -----------------
 
-export async function insertExpense(expense: ExpenseRecord): Promise<void> {
+export async function insertExpense(expense: ExpenseRecord, idempotencyKey?: string): Promise<boolean> {
+  if (idempotencyKey) {
+    const exists = await checkIdempotencyKey(idempotencyKey);
+    if (exists) return false; // Duplicate prevented
+  }
+
   if (Platform.OS === 'web') {
     webExpenses.unshift(expense);
+    if (idempotencyKey) webIdempotencyKeys.add(idempotencyKey);
     if (expense.odometer) {
       await updateVehicleOdometer(expense.vehicleId, expense.odometer, 'expense', expense.title);
     }
-    return;
+    return true;
   }
+
   const db = await getDb();
-  if (!db) return;
-  await db.runAsync(
-    `INSERT INTO expenses (id, vehicleId, category, title, amount, date, odometer, vendor, notes, receiptUri, linkedServiceId, linkedFuelId, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      expense.id,
-      expense.vehicleId,
-      expense.category,
-      expense.title,
-      expense.amount,
-      expense.date,
-      expense.odometer || null,
-      expense.vendor || null,
-      expense.notes || null,
-      expense.receiptUri || null,
-      expense.linkedServiceId || null,
-      expense.linkedFuelId || null,
-      expense.createdAt,
-    ]
-  );
+  if (!db) return false;
+
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `INSERT INTO expenses (id, vehicleId, category, title, amount, date, odometer, vendor, notes, receiptUri, linkedServiceId, linkedFuelId, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        expense.id,
+        expense.vehicleId,
+        expense.category,
+        expense.title,
+        expense.amount,
+        expense.date,
+        expense.odometer || null,
+        expense.vendor || null,
+        expense.notes || null,
+        expense.receiptUri || null,
+        expense.linkedServiceId || null,
+        expense.linkedFuelId || null,
+        expense.createdAt,
+      ]
+    );
+
+    if (idempotencyKey) {
+      await db.runAsync(
+        'INSERT INTO idempotency_keys (key, recordType, recordId, createdAt) VALUES (?, ?, ?, ?)',
+        [idempotencyKey, 'expense', expense.id, new Date().toISOString()]
+      );
+    }
+  });
 
   if (expense.odometer) {
     await updateVehicleOdometer(expense.vehicleId, expense.odometer, 'expense', expense.title);
   }
+  return true;
 }
 
 export async function getExpenses(vehicleId: string): Promise<ExpenseRecord[]> {
