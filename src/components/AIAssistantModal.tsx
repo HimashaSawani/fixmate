@@ -101,6 +101,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
   const [backendOnline, setBackendOnline] = useState<boolean>(false);
   const [isLlmActive, setIsLlmActive] = useState<boolean>(false);
   const [backendEngine, setBackendEngine] = useState<string>('checking...');
+  const [verifiedLlmStatus, setVerifiedLlmStatus] = useState<'cloud_llm' | 'server_rules' | 'on_device'>('on_device');
   
   // Draft Action State
   const [activeDraft, setActiveDraft] = useState<AIDraftRecord | null>(null);
@@ -114,6 +115,14 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
         setBackendOnline(h.isOnline);
         setIsLlmActive(Boolean(h.isLlmActive));
         setBackendEngine(h.engine || (h.isOnline ? 'Active' : 'Offline'));
+        if (!h.isOnline) {
+          setVerifiedLlmStatus('on_device');
+        } else if (h.isLlmActive) {
+          // LLM is configured on backend; actual status verified on first response
+          setVerifiedLlmStatus('server_rules');
+        } else {
+          setVerifiedLlmStatus('server_rules');
+        }
       });
     }
   }, [visible]);
@@ -132,12 +141,12 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
             text: `Hello! I'm your FixMate Assistant for **${vehicle.name}**.\nAsk me anything about your service history, fuel economy, or tell me to log an expense (e.g. *"I did an oil change today, mileage ${vehicle.currentOdometer.toLocaleString()}, cost 18,000"*).`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOffline: !backendOnline,
-            llmProvider: backendOnline ? (isLlmActive ? 'openai_gpt4o_mini' : 'deterministic_rules') : 'on_device',
+            llmProvider: backendOnline ? 'deterministic_rules' : 'on_device',
           },
         ]);
       }
     }
-  }, [visible, vehicle?.id, vehicle?.name, vehicle?.currentOdometer, backendOnline, isLlmActive]);
+  }, [visible, vehicle?.id, vehicle?.name, vehicle?.currentOdometer, backendOnline]);
 
   const handleClearChat = () => {
     if (!vehicle) return;
@@ -195,6 +204,18 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
       let llmProvider = result.llmProvider;
       let draftRecord: AIDraftRecord | undefined = result.draftRecord || undefined;
 
+      // Update header badge with verified live response status
+      if (result.llmProvider && result.llmProvider.startsWith('openai')) {
+        setVerifiedLlmStatus('cloud_llm');
+        setIsLlmActive(true);
+      } else if (result.llmProvider === 'deterministic_rules') {
+        setVerifiedLlmStatus('server_rules');
+        setIsLlmActive(false);
+      } else if (result.isOffline || result.llmProvider === 'on_device') {
+        setVerifiedLlmStatus('on_device');
+        setIsLlmActive(false);
+      }
+
       // 3. Graceful offline rule-based fallback if backend offline or answer empty
       if (!finalText) {
         const fallback = queryVehicleAssistant(
@@ -210,6 +231,8 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
         finalAction = fallback.suggestedAction;
         isOffline = true;
         llmProvider = 'on_device';
+        setVerifiedLlmStatus('on_device');
+        setIsLlmActive(false);
       }
 
       const aiMsg: ChatMessage = {
@@ -231,6 +254,8 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
       }
     } catch (err: any) {
       console.warn('Assistant error:', err);
+      setVerifiedLlmStatus('on_device');
+      setIsLlmActive(false);
       const fallback = queryVehicleAssistant(
         q,
         vehicle,
@@ -359,13 +384,14 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                   style={[
                     styles.statusPill,
                     {
-                      backgroundColor: !backendOnline
-                        ? isDark
+                      backgroundColor:
+                        verifiedLlmStatus === 'cloud_llm'
+                          ? 'rgba(16,185,129,0.15)'
+                          : verifiedLlmStatus === 'server_rules'
+                          ? 'rgba(59,130,246,0.15)'
+                          : isDark
                           ? theme.colors.surfaceHighlight
-                          : '#F1F5F9'
-                        : isLlmActive
-                        ? 'rgba(16,185,129,0.15)'
-                        : 'rgba(59,130,246,0.15)',
+                          : '#F1F5F9',
                     },
                   ]}
                 >
@@ -373,11 +399,12 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                     style={[
                       styles.statusDot,
                       {
-                        backgroundColor: !backendOnline
-                          ? theme.colors.textMuted
-                          : isLlmActive
-                          ? '#10B981'
-                          : theme.colors.primary,
+                        backgroundColor:
+                          verifiedLlmStatus === 'cloud_llm'
+                            ? '#10B981'
+                            : verifiedLlmStatus === 'server_rules'
+                            ? theme.colors.primary
+                            : theme.colors.textMuted,
                       },
                     ]}
                   />
@@ -385,19 +412,20 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                     style={[
                       styles.statusPillText,
                       {
-                        color: !backendOnline
-                          ? theme.colors.textMuted
-                          : isLlmActive
-                          ? '#10B981'
-                          : theme.colors.primary,
+                        color:
+                          verifiedLlmStatus === 'cloud_llm'
+                            ? '#10B981'
+                            : verifiedLlmStatus === 'server_rules'
+                            ? theme.colors.primary
+                            : theme.colors.textMuted,
                       },
                     ]}
                   >
-                    {!backendOnline
-                      ? 'On-Device'
-                      : isLlmActive
+                    {verifiedLlmStatus === 'cloud_llm'
                       ? 'Cloud LLM'
-                      : 'Server Rules'}
+                      : verifiedLlmStatus === 'server_rules'
+                      ? 'Server Rules'
+                      : 'On-Device'}
                   </Text>
                 </View>
               </View>

@@ -32,8 +32,9 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test": "npx tsx test_all.ts && npx tsx test_calculations.ts && npx tsx test_e2e_release_audit.ts",
+    "test": "npx tsx test_all.ts && npx tsx test_calculations.ts && npx tsx test_automation_engine.ts && npx tsx test_e2e_release_audit.ts",
     "test:calculations": "npx tsx test_calculations.ts",
+    "test:automation": "npx tsx test_automation_engine.ts",
     "test:audit": "npx tsx test_e2e_release_audit.ts"
   },
   "private": true

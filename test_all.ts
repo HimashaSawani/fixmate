@@ -282,6 +282,45 @@ try {
 }
 assert(unknownLinkedServiceCaught, 'Invalid linkedServiceId in expense strictly rejected');
 
+// Test 4.5 Required Dates Validation
+let missingDateCaught = false;
+try {
+  validateBackupPayload({
+    ...validBackup,
+    maintenancePlans: [{ ...plans[0], id: 'p_no_date', nextDueDate: '' as any }],
+  });
+} catch (e: any) {
+  missingDateCaught = e.message.includes('missing or has an invalid \'nextDueDate\'');
+}
+assert(missingDateCaught, 'Missing required nextDueDate strictly rejected');
+
+// Test 4.6 Required Enums & Fields Validation
+let invalidCategoryCaught = false;
+try {
+  validateBackupPayload({
+    ...validBackup,
+    expenses: [{ ...expenses[0], id: 'exp_bad_cat', category: 'invalid_category_xyz' as any }],
+  });
+} catch (e: any) {
+  invalidCategoryCaught = e.message.includes('has an invalid \'category\'');
+}
+assert(invalidCategoryCaught, 'Invalid expense category enum strictly rejected');
+
+// Test 4.7 Odometer Entries Validation
+const validOdometerEntry = {
+  id: 'odo_1',
+  vehicleId: vehicle1.id,
+  odometer: 25000,
+  date: '2026-01-01T00:00:00Z',
+  source: 'manual' as const,
+  createdAt: '2026-01-01T00:00:00Z',
+};
+const validatedWithOdo = validateBackupPayload({
+  ...validBackup,
+  odometerEntries: [validOdometerEntry],
+});
+assert(validatedWithOdo.odometerEntries?.length === 1, 'Odometer history validated and retained in backup');
+
 console.log('\n================================================================');
 console.log(`🎉 ALL ${testsPassed}/${testsTotal} TESTS PASSED WITH 100% PRECISION!`);
 console.log('================================================================');

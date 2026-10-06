@@ -6,6 +6,7 @@ import {
   getServiceRecords,
   getExpenses,
   getMaintenancePlans,
+  getOdometerEntries,
   restoreAllData,
   BackupRestorePayload,
 } from '../database/db';
@@ -28,6 +29,7 @@ export async function exportAllDataToJson(vehicleId?: string): Promise<string> {
     serviceRecords: [],
     expenses: [],
     maintenancePlans: [],
+    odometerEntries: [],
   };
 
   for (const v of targetVehicles) {
@@ -35,6 +37,7 @@ export async function exportAllDataToJson(vehicleId?: string): Promise<string> {
     const services = await getServiceRecords(v.id);
     const expenses = await getExpenses(v.id);
     const plans = await getMaintenancePlans(v.id);
+    const odometers = await getOdometerEntries(v.id);
 
     // Process receipts to base64 for portability
     const portableFuel = await Promise.all(
@@ -89,6 +92,9 @@ export async function exportAllDataToJson(vehicleId?: string): Promise<string> {
     exportPayload.serviceRecords.push(...portableServices);
     exportPayload.expenses.push(...portableExpenses);
     exportPayload.maintenancePlans.push(...plans);
+    if (exportPayload.odometerEntries) {
+      exportPayload.odometerEntries.push(...odometers);
+    }
   }
 
   const jsonString = JSON.stringify(exportPayload, null, 2);

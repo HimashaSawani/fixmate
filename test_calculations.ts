@@ -216,9 +216,10 @@ console.log('Fuel Total:', unifiedExp.fuelTotal, 'Expected: 29600');
 console.log('Service Total:', unifiedExp.serviceTotal, 'Expected: 20000');
 console.log('Insurance Total:', unifiedExp.insuranceTotal, 'Expected: 50000');
 console.log('Grand Total:', unifiedExp.totalCost, 'Expected: 99600 (No duplicate 20000)');
-console.log('Cost Per Km:', unifiedExp.costPerKm, 'Expected: 4.98 / km');
+console.log('Cost Per Km:', unifiedExp.costPerKm, 'Expected: 124.5 / km (99600 / 800 km)');
 
 console.assert(unifiedExp.totalCost === 99600, 'Duplicate counting occurred in ledger!');
+console.assert(unifiedExp.costPerKm === 124.5, 'Cost per km should equal 124.5 / km');
 console.log('✅ TEST 5 PASSED: Double-counting completely prevented in expense ledger.\n');
 
 console.log('================================================================');

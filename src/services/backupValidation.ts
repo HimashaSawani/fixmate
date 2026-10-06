@@ -13,8 +13,14 @@ export interface VersionedBackupPayload {
   odometerEntries?: OdometerEntry[];
 }
 
+function isValidIsoDate(str: any): boolean {
+  if (typeof str !== 'string' || str.trim() === '') return false;
+  const time = new Date(str).getTime();
+  return !isNaN(time);
+}
+
 /**
- * Validates version, structure, types, dates, numbers, duplicate IDs, and linked relationships of backup JSON.
+ * Validates schema version, structure, types, dates, numbers, duplicate IDs, and linked relationships of backup JSON.
  */
 export function validateBackupPayload(data: any): VersionedBackupPayload {
   if (!data || typeof data !== 'object') {
@@ -40,6 +46,9 @@ export function validateBackupPayload(data: any): VersionedBackupPayload {
   const odometerIds = new Set<string>();
 
   const allowedVehicleTypes = new Set(['car', 'motorcycle', 'van', 'suv', 'truck', 'other']);
+  const allowedFuelTypes = new Set(['petrol', 'diesel', 'electric', 'hybrid', 'other']);
+  const allowedExpenseCategories = new Set(['fuel', 'service', 'repair', 'insurance', 'registration', 'accessories', 'other']);
+  const allowedOdometerSources = new Set(['manual', 'fuel', 'service', 'ocr', 'import']);
 
   for (let i = 0; i < data.vehicles.length; i++) {
     const v = data.vehicles[i];
@@ -67,11 +76,14 @@ export function validateBackupPayload(data: any): VersionedBackupPayload {
     if (typeof v.currentOdometer !== 'number' || isNaN(v.currentOdometer) || v.currentOdometer < 0) {
       throw new Error(`Vehicle '${v.id}' has an invalid 'currentOdometer'.`);
     }
-    if (v.createdAt && isNaN(new Date(v.createdAt).getTime())) {
-      throw new Error(`Vehicle '${v.id}' has an invalid 'createdAt' date.`);
+    if (v.fuelType && !allowedFuelTypes.has(v.fuelType)) {
+      throw new Error(`Vehicle '${v.id}' has an invalid 'fuelType' ('${v.fuelType}').`);
     }
-    if (v.updatedAt && isNaN(new Date(v.updatedAt).getTime())) {
-      throw new Error(`Vehicle '${v.id}' has an invalid 'updatedAt' date.`);
+    if (!isValidIsoDate(v.createdAt)) {
+      throw new Error(`Vehicle '${v.id}' is missing or has an invalid 'createdAt' date.`);
+    }
+    if (!isValidIsoDate(v.updatedAt)) {
+      throw new Error(`Vehicle '${v.id}' is missing or has an invalid 'updatedAt' date.`);
     }
     vehicleIds.add(v.id);
   }
@@ -92,7 +104,7 @@ export function validateBackupPayload(data: any): VersionedBackupPayload {
       if (!p.vehicleId || !vehicleIds.has(p.vehicleId)) {
         throw new Error(`Maintenance plan '${p.id}' references unknown vehicleId '${p.vehicleId}'.`);
       }
-      if (!p.title || typeof p.title !== 'string') {
+      if (!p.title || typeof p.title !== 'string' || p.title.trim() === '') {
         throw new Error(`Maintenance plan '${p.id}' is missing a required 'title'.`);
       }
       if (typeof p.intervalKm !== 'number' || isNaN(p.intervalKm) || p.intervalKm < 0) {
@@ -104,8 +116,17 @@ export function validateBackupPayload(data: any): VersionedBackupPayload {
       if (typeof p.nextDueMileage !== 'number' || isNaN(p.nextDueMileage) || p.nextDueMileage < 0) {
         throw new Error(`Maintenance plan '${p.id}' has an invalid 'nextDueMileage'.`);
       }
-      if (p.nextDueDate && isNaN(new Date(p.nextDueDate).getTime())) {
-        throw new Error(`Maintenance plan '${p.id}' has an invalid 'nextDueDate'.`);
+      if (!isValidIsoDate(p.nextDueDate)) {
+        throw new Error(`Maintenance plan '${p.id}' is missing or has an invalid 'nextDueDate'.`);
+      }
+      if (typeof p.lastServiceMileage !== 'number' || isNaN(p.lastServiceMileage) || p.lastServiceMileage < 0) {
+        throw new Error(`Maintenance plan '${p.id}' has an invalid 'lastServiceMileage'.`);
+      }
+      if (!isValidIsoDate(p.lastServiceDate)) {
+        throw new Error(`Maintenance plan '${p.id}' is missing or has an invalid 'lastServiceDate'.`);
+      }
+      if (p.createdAt && !isValidIsoDate(p.createdAt)) {
+        throw new Error(`Maintenance plan '${p.id}' has an invalid 'createdAt' date.`);
       }
       planIds.add(p.id);
     }
@@ -139,8 +160,11 @@ export function validateBackupPayload(data: any): VersionedBackupPayload {
       if (typeof f.pricePerLitre !== 'number' || isNaN(f.pricePerLitre) || f.pricePerLitre < 0) {
         throw new Error(`Fuel entry '${f.id}' has an invalid 'pricePerLitre'.`);
       }
-      if (f.date && isNaN(new Date(f.date).getTime())) {
-        throw new Error(`Fuel entry '${f.id}' has an invalid 'date'.`);
+      if (!isValidIsoDate(f.date)) {
+        throw new Error(`Fuel entry '${f.id}' is missing or has an invalid 'date'.`);
+      }
+      if (f.createdAt && !isValidIsoDate(f.createdAt)) {
+        throw new Error(`Fuel entry '${f.id}' has an invalid 'createdAt' date.`);
       }
       fuelIds.add(f.id);
     }
@@ -162,8 +186,11 @@ export function validateBackupPayload(data: any): VersionedBackupPayload {
       if (!s.vehicleId || !vehicleIds.has(s.vehicleId)) {
         throw new Error(`Service record '${s.id}' references unknown vehicleId '${s.vehicleId}'.`);
       }
-      if (!s.title || typeof s.title !== 'string') {
+      if (!s.title || typeof s.title !== 'string' || s.title.trim() === '') {
         throw new Error(`Service record '${s.id}' is missing a required 'title'.`);
+      }
+      if (!s.serviceType || typeof s.serviceType !== 'string' || s.serviceType.trim() === '') {
+        throw new Error(`Service record '${s.id}' is missing a required 'serviceType'.`);
       }
       if (s.planId && !planIds.has(s.planId)) {
         throw new Error(`Service record '${s.id}' references unknown maintenance planId '${s.planId}'.`);
@@ -174,8 +201,11 @@ export function validateBackupPayload(data: any): VersionedBackupPayload {
       if (typeof s.totalCost !== 'number' || isNaN(s.totalCost) || s.totalCost < 0) {
         throw new Error(`Service record '${s.id}' has an invalid 'totalCost'.`);
       }
-      if (s.date && isNaN(new Date(s.date).getTime())) {
-        throw new Error(`Service record '${s.id}' has an invalid 'date'.`);
+      if (!isValidIsoDate(s.date)) {
+        throw new Error(`Service record '${s.id}' is missing or has an invalid 'date'.`);
+      }
+      if (s.createdAt && !isValidIsoDate(s.createdAt)) {
+        throw new Error(`Service record '${s.id}' has an invalid 'createdAt' date.`);
       }
       serviceIds.add(s.id);
     }
@@ -197,14 +227,20 @@ export function validateBackupPayload(data: any): VersionedBackupPayload {
       if (!e.vehicleId || !vehicleIds.has(e.vehicleId)) {
         throw new Error(`Expense '${e.id}' references unknown vehicleId '${e.vehicleId}'.`);
       }
-      if (!e.title || typeof e.title !== 'string') {
+      if (!e.title || typeof e.title !== 'string' || e.title.trim() === '') {
         throw new Error(`Expense '${e.id}' is missing a required 'title'.`);
+      }
+      if (!e.category || !allowedExpenseCategories.has(e.category)) {
+        throw new Error(`Expense '${e.id}' has an invalid 'category' ('${e.category}').`);
       }
       if (typeof e.amount !== 'number' || isNaN(e.amount) || e.amount < 0) {
         throw new Error(`Expense '${e.id}' has an invalid 'amount'.`);
       }
-      if (e.date && isNaN(new Date(e.date).getTime())) {
-        throw new Error(`Expense '${e.id}' has an invalid 'date'.`);
+      if (!isValidIsoDate(e.date)) {
+        throw new Error(`Expense '${e.id}' is missing or has an invalid 'date'.`);
+      }
+      if (e.createdAt && !isValidIsoDate(e.createdAt)) {
+        throw new Error(`Expense '${e.id}' has an invalid 'createdAt' date.`);
       }
       if (e.linkedServiceId && !serviceIds.has(e.linkedServiceId)) {
         throw new Error(`Expense '${e.id}' references unknown linkedServiceId '${e.linkedServiceId}'.`);
@@ -234,6 +270,15 @@ export function validateBackupPayload(data: any): VersionedBackupPayload {
       }
       if (typeof o.odometer !== 'number' || isNaN(o.odometer) || o.odometer < 0) {
         throw new Error(`Odometer entry '${o.id}' has an invalid 'odometer'.`);
+      }
+      if (!isValidIsoDate(o.date)) {
+        throw new Error(`Odometer entry '${o.id}' is missing or has an invalid 'date'.`);
+      }
+      if (o.source && !allowedOdometerSources.has(o.source)) {
+        throw new Error(`Odometer entry '${o.id}' has an invalid 'source' ('${o.source}').`);
+      }
+      if (o.createdAt && !isValidIsoDate(o.createdAt)) {
+        throw new Error(`Odometer entry '${o.id}' has an invalid 'createdAt' date.`);
       }
       odometerIds.add(o.id);
     }

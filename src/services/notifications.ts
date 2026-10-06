@@ -1,5 +1,4 @@
 import { MaintenancePlan, Vehicle } from '../types';
-import { isRunningInExpoGo } from 'expo';
 
 let NotificationsModule: any = null;
 let PlatformModule: any = null;
@@ -16,8 +15,10 @@ function getPlatform(): any {
 
 function isExpoGo(): boolean {
   try {
-    if (typeof isRunningInExpoGo === 'function') {
-      return isRunningInExpoGo();
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const expo = require('expo');
+    if (typeof expo.isRunningInExpoGo === 'function') {
+      return expo.isRunningInExpoGo();
     }
   } catch {
     // fallback
