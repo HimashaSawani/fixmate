@@ -21,6 +21,7 @@ let webFuel: FuelEntry[] = [];
 let webPlans: MaintenancePlan[] = [];
 let webServices: ServiceRecord[] = [];
 let webExpenses: ExpenseRecord[] = [];
+let webIdempotencyKeys = new Set<string>();
 let webSettings: Record<string, string> = {
   currency: 'LKR',
   distanceUnit: 'km',

@@ -160,7 +160,7 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({
           </View>
           <View style={[styles.costPerKmPill, { backgroundColor: theme.colors.primaryMuted }]}>
             <Text style={[styles.costPerKmText, { color: theme.colors.primary }]}>
-              {currency} {unified.costPerKm ? unified.costPerKm.toFixed(2) : '0.00'} / km
+              {unified.costPerKm !== null ? `${currency} ${unified.costPerKm.toFixed(2)} / km` : 'Cost / km: N/A'}
             </Text>
           </View>
         </View>

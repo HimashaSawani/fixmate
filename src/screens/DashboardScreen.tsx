@@ -41,6 +41,7 @@ interface DashboardScreenProps {
   onOpenAddFuel: () => void;
   onOpenAddService: (planId?: string) => void;
   onOpenAddExpense: () => void;
+  onOpenScanReceiptModal?: () => void;
   onOpenOdometerModal: () => void;
   onOpenReceipt: (uri: string) => void;
   onNavigateTab: (tabName: string) => void;
@@ -58,6 +59,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   onOpenAddFuel,
   onOpenAddService,
   onOpenAddExpense,
+  onOpenScanReceiptModal,
   onOpenOdometerModal,
   onOpenReceipt,
   onNavigateTab,
@@ -119,7 +121,13 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         onAddFuel={onOpenAddFuel}
         onAddService={() => onOpenAddService()}
         onAddExpense={onOpenAddExpense}
-        onScanReceipt={onOpenAddExpense}
+        onScanReceipt={() => {
+          if (onOpenScanReceiptModal) {
+            onOpenScanReceiptModal();
+          } else {
+            onOpenAddExpense();
+          }
+        }}
       />
 
       {/* 3. Summary Metric Cards with Sparklines */}

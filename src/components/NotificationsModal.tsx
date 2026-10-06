@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -9,14 +9,17 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { Vehicle, MaintenancePlan } from '../types';
-import { evaluateMaintenancePlans, MaintenanceStatusResult } from '../services/calculations';
+import { Vehicle, MaintenancePlan, OdometerEntry } from '../types';
+import { evaluateMaintenancePlans } from '../services/calculations';
+import { calculateDailyDrivingRate, calculateExplainableForecast } from '../services/automationEngine';
+import { getNotificationPermissionStatus, requestNotificationPermissions } from '../services/notifications';
 import { useTheme } from '../theme';
 
 interface NotificationsModalProps {
   visible: boolean;
   vehicle: Vehicle | null;
   plans: MaintenancePlan[];
+  odometerEntries?: OdometerEntry[];
   onClose: () => void;
   onOpenAddService: (planId?: string) => void;
   onNavigateToMaintenance: () => void;
@@ -26,14 +29,28 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
   visible,
   vehicle,
   plans,
+  odometerEntries = [],
   onClose,
   onOpenAddService,
   onNavigateToMaintenance,
 }) => {
   const { theme, isDark } = useTheme();
+  const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
+
+  useEffect(() => {
+    if (visible) {
+      getNotificationPermissionStatus().then(setPermissionStatus);
+    }
+  }, [visible]);
+
+  const handleRequestPermission = async () => {
+    const granted = await requestNotificationPermissions();
+    setPermissionStatus(granted ? 'granted' : 'denied');
+  };
 
   if (!vehicle) return null;
 
+  const { avgKmPerDay, sampleDays } = calculateDailyDrivingRate(odometerEntries);
   const evaluated = evaluateMaintenancePlans(plans, vehicle.currentOdometer);
   const overdueItems = evaluated.filter((e) => e.status === 'overdue');
   const dueSoonItems = evaluated.filter((e) => e.status === 'due_soon');
@@ -82,6 +99,35 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
           </View>
 
           <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+            {/* System Permission Banner */}
+            {permissionStatus !== 'granted' && (
+              <View
+                style={[
+                  styles.permissionBanner,
+                  {
+                    backgroundColor: isDark ? 'rgba(37,99,235,0.15)' : '#EFF6FF',
+                    borderColor: isDark ? 'rgba(37,99,235,0.3)' : '#BFDBFE',
+                  },
+                ]}
+              >
+                <Ionicons name="notifications-circle-outline" size={20} color={theme.colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.permissionTitle, { color: theme.colors.textPrimary }]}>
+                    Device Notifications Disabled
+                  </Text>
+                  <Text style={[styles.permissionSub, { color: theme.colors.textSecondary }]}>
+                    Enable notifications to get proactive alerts 7 days before services are due.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.enableBtn, { backgroundColor: theme.colors.primary }]}
+                  onPress={handleRequestPermission}
+                >
+                  <Text style={styles.enableBtnText}>Enable</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {totalAlerts === 0 ? (
               <View style={styles.allClearBox}>
                 <Ionicons name="checkmark-circle" size={48} color={theme.colors.secondary} />
@@ -161,50 +207,80 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
                       </Text>
                     </View>
 
-                    {dueSoonItems.map((item) => (
-                      <View
-                        key={item.plan.id}
-                        style={[
-                          styles.alertCard,
-                          {
-                            backgroundColor: isDark ? 'rgba(245,158,11,0.1)' : '#FFFBEB',
-                            borderColor: theme.colors.warning,
-                          },
-                        ]}
-                      >
-                        <View style={styles.alertTop}>
-                          <Text style={[styles.alertTitle, { color: theme.colors.textPrimary }]}>
-                            {item.plan.title}
-                          </Text>
-                          <View
-                            style={[
-                              styles.statusBadge,
-                              { backgroundColor: theme.colors.warning },
-                            ]}
-                          >
-                            <Text style={[styles.statusBadgeText, { color: '#000000' }]}>DUE SOON</Text>
-                          </View>
-                        </View>
-
-                        <Text style={[styles.alertReason, { color: theme.colors.textSecondary }]}>
-                          Target: {item.plan.nextDueMileage.toLocaleString()} km or {item.formattedDueDate}
-                        </Text>
-                        <Text style={[styles.alertDiff, { color: theme.colors.warning }]}>
-                          {item.remainingKm.toLocaleString()} km or {item.remainingDays} days remaining
-                        </Text>
-
-                        <TouchableOpacity
-                          style={[styles.actionBtn, { backgroundColor: theme.colors.warning }]}
-                          onPress={() => {
-                            onClose();
-                            onOpenAddService(item.plan.id);
-                          }}
+                    {dueSoonItems.map((item) => {
+                      const forecast = calculateExplainableForecast(
+                        item.plan,
+                        vehicle.currentOdometer,
+                        avgKmPerDay,
+                        sampleDays
+                      );
+                      return (
+                        <View
+                          key={item.plan.id}
+                          style={[
+                            styles.alertCard,
+                            {
+                              backgroundColor: isDark ? 'rgba(245,158,11,0.1)' : '#FFFBEB',
+                              borderColor: theme.colors.warning,
+                            },
+                          ]}
                         >
-                          <Ionicons name="construct" size={14} color="#000000" />
-                          <Text style={[styles.actionBtnText, { color: '#000000' }]}>Log Service</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ))}
+                          <View style={styles.alertTop}>
+                            <Text style={[styles.alertTitle, { color: theme.colors.textPrimary }]}>
+                              {item.plan.title}
+                            </Text>
+                            <View
+                              style={[
+                                styles.statusBadge,
+                                { backgroundColor: theme.colors.warning },
+                              ]}
+                            >
+                              <Text style={[styles.statusBadgeText, { color: '#000000' }]}>DUE SOON</Text>
+                            </View>
+                          </View>
+
+                          <Text style={[styles.alertReason, { color: theme.colors.textSecondary }]}>
+                            Target: {item.plan.nextDueMileage.toLocaleString()} km or {item.formattedDueDate}
+                          </Text>
+                          <Text style={[styles.alertDiff, { color: theme.colors.warning }]}>
+                            {item.remainingKm.toLocaleString()} km or {item.remainingDays} days remaining
+                          </Text>
+
+                          {forecast.hasForecast && (
+                            <View
+                              style={[
+                                styles.forecastBox,
+                                {
+                                  backgroundColor: isDark ? theme.colors.surfaceHighlight : '#FFFFFF',
+                                  borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+                                },
+                              ]}
+                            >
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                                <Ionicons name="speedometer-outline" size={13} color={theme.colors.primary} />
+                                <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.primary, letterSpacing: 0.5 }}>
+                                  ESTIMATED DATE (DRIVING FORECAST)
+                                </Text>
+                              </View>
+                              <Text style={[styles.forecastText, { color: theme.colors.textSecondary }]}>
+                                {forecast.explanation}
+                              </Text>
+                            </View>
+                          )}
+
+                          <TouchableOpacity
+                            style={[styles.actionBtn, { backgroundColor: theme.colors.warning }]}
+                            onPress={() => {
+                              onClose();
+                              onOpenAddService(item.plan.id);
+                            }}
+                          >
+                            <Ionicons name="construct" size={14} color="#000000" />
+                            <Text style={[styles.actionBtnText, { color: '#000000' }]}>Log Service</Text>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })}
                   </View>
                 )}
               </>
@@ -310,6 +386,49 @@ const styles = StyleSheet.create({
   },
   scroll: {
     padding: 16,
+  },
+  permissionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  permissionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  permissionSub: {
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 2,
+  },
+  enableBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  enableBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  forecastBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  forecastText: {
+    fontSize: 11,
+    flex: 1,
+    lineHeight: 15,
+    fontWeight: '500',
   },
   allClearBox: {
     alignItems: 'center',
