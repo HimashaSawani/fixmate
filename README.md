@@ -10,6 +10,22 @@
 
 ---
 
+## 📸 Application Screenshots
+
+<p align="center">
+  <img src="./assets/screenshots/01_dashboard.jpg" width="19%" alt="Dashboard" />
+  <img src="./assets/screenshots/02_ai_copilot.jpg" width="19%" alt="FixMate Copilot" />
+  <img src="./assets/screenshots/03_receipt_ocr.jpg" width="19%" alt="Smart Receipt OCR" />
+  <img src="./assets/screenshots/04_maintenance_plans.jpg" width="19%" alt="Maintenance Plans" />
+  <img src="./assets/screenshots/05_reports_analytics.jpg" width="19%" alt="Reports & Analytics" />
+</p>
+
+| 1. Dashboard | 2. AI Copilot | 3. Smart Receipt OCR | 4. Maintenance Plans | 5. Financial Analytics |
+|:---:|:---:|:---:|:---:|:---:|
+| Vehicle status, health metrics & recent activity | Natural language queries & draft creation | Automated receipt camera/gallery scanner | Interval schedules & explainable forecasts | Expense category breakdown & fuel trends |
+
+---
+
 ## 🏗️ Architecture & Data Flow
 
 ```mermaid
