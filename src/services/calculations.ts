@@ -295,6 +295,9 @@ export function calculateUnifiedExpenses(
   otherTotal: number;
   categoryBreakdown: CategoryCost[];
   monthlyBreakdown: MonthlyCostItem[];
+  currentMonthTotal: number;
+  currentMonthLabel: string;
+  trackedDistance: number;
   costPerKm: number;
 } {
   // 1. Fuel Total
