@@ -56,3 +56,6 @@ backend/.venv/
 # generated native folders
 /ios
 /android
+
+# Tooling / Editor configs
+.claude/
