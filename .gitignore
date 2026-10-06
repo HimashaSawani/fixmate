@@ -39,6 +39,20 @@ backend/.env
 # typescript
 *.tsbuildinfo
 
+# Python cache & virtualenv
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
+backend/__pycache__/
+backend/*/__pycache__/
+backend/venv/
+backend/.venv/
+.pytest_cache/
+
 # generated native folders
 /ios
 /android

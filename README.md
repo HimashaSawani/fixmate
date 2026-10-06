@@ -154,7 +154,7 @@ Once the build finishes, download the `.apk` file directly to your Android devic
 
 ## 🧪 Automated Test Verification
 
-FixMate includes a strict end-to-end invariant test suite ([`test_e2e_release_audit.ts`](file:///d:/fixmate/test_e2e_release_audit.ts)) validating database consistency, idempotency, and isolation rules:
+FixMate includes a strict end-to-end invariant test suite ([`test_e2e_release_audit.ts`](./test_e2e_release_audit.ts)) validating database consistency, idempotency, and isolation rules:
 
 ```bash
 npx tsx test_e2e_release_audit.ts
