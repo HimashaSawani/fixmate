@@ -13,7 +13,7 @@ import { processFuelEntries } from '../services/calculations';
 import { FuelEntryCard } from '../components/FuelEntryCard';
 import { StatCard } from '../components/StatCard';
 import { FuelTrendChart } from '../components/ChartWidgets';
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 
 interface FuelLogScreenProps {
   vehicle: Vehicle | null;
@@ -32,12 +32,15 @@ export const FuelLogScreen: React.FC<FuelLogScreenProps> = ({
   onOpenReceipt,
   onDeleteFuel,
 }) => {
+  const { theme, isDark } = useTheme();
   const [filterType, setFilterType] = useState<'all' | 'full' | 'partial'>('all');
 
   if (!vehicle) {
     return (
-      <View style={styles.emptyContainer}>
-        <Text style={styles.emptyText}>Please select a vehicle</Text>
+      <View style={[styles.emptyContainer, { backgroundColor: theme.colors.background }]}>
+        <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
+          Please select a vehicle
+        </Text>
       </View>
     );
   }
@@ -66,16 +69,28 @@ export const FuelLogScreen: React.FC<FuelLogScreenProps> = ({
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 100 }}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      contentContainerStyle={{ paddingBottom: 110 }}
+      showsVerticalScrollIndicator={false}
+    >
       {/* Top Action Header */}
       <View style={styles.topHeader}>
         <View>
-          <Text style={styles.screenTitle}>Fuel Efficiency & Logs</Text>
-          <Text style={styles.screenSub}>Full-to-Full Tank Validation Method</Text>
+          <Text style={[styles.screenTitle, { color: theme.colors.textPrimary }]}>
+            Fuel Efficiency & Logs
+          </Text>
+          <Text style={[styles.screenSub, { color: theme.colors.textSecondary }]}>
+            Full-to-Full Tank Calculation Method
+          </Text>
         </View>
 
-        <TouchableOpacity style={styles.addBtn} onPress={onOpenAddFuel} activeOpacity={0.8}>
-          <Ionicons name="add" size={18} color="#0B0F19" />
+        <TouchableOpacity
+          style={[styles.addBtn, { backgroundColor: theme.colors.primary }]}
+          onPress={onOpenAddFuel}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="add" size={18} color="#FFFFFF" />
           <Text style={styles.addBtnText}>Log Fill-up</Text>
         </TouchableOpacity>
       </View>
@@ -106,28 +121,103 @@ export const FuelLogScreen: React.FC<FuelLogScreenProps> = ({
       {/* Filter Tabs */}
       <View style={styles.filterRow}>
         <TouchableOpacity
-          style={[styles.filterChip, filterType === 'all' && styles.filterChipActive]}
+          style={[
+            styles.filterChip,
+            {
+              backgroundColor:
+                filterType === 'all'
+                  ? theme.colors.primaryMuted
+                  : theme.colors.surface,
+              borderColor:
+                filterType === 'all'
+                  ? theme.colors.primary
+                  : isDark
+                  ? 'rgba(255,255,255,0.08)'
+                  : '#E2E8F0',
+            },
+          ]}
           onPress={() => setFilterType('all')}
         >
-          <Text style={[styles.filterChipText, filterType === 'all' && styles.filterChipTextActive]}>
+          <Text
+            style={[
+              styles.filterChipText,
+              {
+                color:
+                  filterType === 'all'
+                    ? theme.colors.primary
+                    : theme.colors.textSecondary,
+                fontWeight: filterType === 'all' ? '700' : '600',
+              },
+            ]}
+          >
             All ({processedEntries.length})
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.filterChip, filterType === 'full' && styles.filterChipActive]}
+          style={[
+            styles.filterChip,
+            {
+              backgroundColor:
+                filterType === 'full'
+                  ? theme.colors.primaryMuted
+                  : theme.colors.surface,
+              borderColor:
+                filterType === 'full'
+                  ? theme.colors.primary
+                  : isDark
+                  ? 'rgba(255,255,255,0.08)'
+                  : '#E2E8F0',
+            },
+          ]}
           onPress={() => setFilterType('full')}
         >
-          <Text style={[styles.filterChipText, filterType === 'full' && styles.filterChipTextActive]}>
+          <Text
+            style={[
+              styles.filterChipText,
+              {
+                color:
+                  filterType === 'full'
+                    ? theme.colors.primary
+                    : theme.colors.textSecondary,
+                fontWeight: filterType === 'full' ? '700' : '600',
+              },
+            ]}
+          >
             Full Tanks ({stats.fullFillCount})
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.filterChip, filterType === 'partial' && styles.filterChipActive]}
+          style={[
+            styles.filterChip,
+            {
+              backgroundColor:
+                filterType === 'partial'
+                  ? theme.colors.primaryMuted
+                  : theme.colors.surface,
+              borderColor:
+                filterType === 'partial'
+                  ? theme.colors.primary
+                  : isDark
+                  ? 'rgba(255,255,255,0.08)'
+                  : '#E2E8F0',
+            },
+          ]}
           onPress={() => setFilterType('partial')}
         >
-          <Text style={[styles.filterChipText, filterType === 'partial' && styles.filterChipTextActive]}>
+          <Text
+            style={[
+              styles.filterChipText,
+              {
+                color:
+                  filterType === 'partial'
+                    ? theme.colors.primary
+                    : theme.colors.textSecondary,
+                fontWeight: filterType === 'partial' ? '700' : '600',
+              },
+            ]}
+          >
             Partial ({stats.partialFillCount})
           </Text>
         </TouchableOpacity>
@@ -135,11 +225,22 @@ export const FuelLogScreen: React.FC<FuelLogScreenProps> = ({
 
       {/* List of Entries */}
       {filteredEntries.length === 0 ? (
-        <View style={styles.emptyCard}>
+        <View
+          style={[
+            styles.emptyCard,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+            },
+          ]}
+        >
           <Ionicons name="speedometer-outline" size={36} color={theme.colors.textMuted} />
-          <Text style={styles.emptyCardTitle}>No Fuel Fill-Ups Recorded</Text>
-          <Text style={styles.emptyCardSub}>
-            Tap 'Log Fill-up' to record your petrol/diesel fill-ups and compute your vehicle's exact km/L efficiency.
+          <Text style={[styles.emptyCardTitle, { color: theme.colors.textPrimary }]}>
+            No Fuel Fill-Ups Recorded
+          </Text>
+          <Text style={[styles.emptyCardSub, { color: theme.colors.textSecondary }]}>
+            Tap 'Log Fill-up' to record your petrol/diesel fill-ups and compute your vehicle's exact
+            km/L efficiency.
           </Text>
         </View>
       ) : (
@@ -160,7 +261,6 @@ export const FuelLogScreen: React.FC<FuelLogScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
     paddingHorizontal: 16,
     paddingTop: 12,
   },
@@ -171,7 +271,6 @@ const styles = StyleSheet.create({
     padding: 32,
   },
   emptyText: {
-    color: theme.colors.textSecondary,
     fontSize: 14,
   },
   topHeader: {
@@ -181,12 +280,10 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   screenTitle: {
-    color: theme.colors.textPrimary,
     fontSize: 18,
     fontWeight: '800',
   },
   screenSub: {
-    color: theme.colors.textSecondary,
     fontSize: 11,
     marginTop: 2,
   },
@@ -194,13 +291,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: theme.colors.primary,
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 10,
+    borderRadius: 12,
   },
   addBtnText: {
-    color: '#0B0F19',
+    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
   },
@@ -215,47 +311,31 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
-  },
-  filterChipActive: {
-    backgroundColor: theme.colors.primaryMuted,
-    borderColor: theme.colors.primary,
   },
   filterChipText: {
-    color: theme.colors.textSecondary,
     fontSize: 12,
-    fontWeight: '600',
-  },
-  filterChipTextActive: {
-    color: theme.colors.primaryLight,
-    fontWeight: '700',
   },
   emptyCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: 14,
+    borderRadius: 18,
     padding: 24,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
     marginTop: 10,
+    gap: 4,
   },
   emptyCardTitle: {
-    color: theme.colors.textPrimary,
     fontSize: 15,
     fontWeight: '700',
-    marginTop: 10,
+    marginTop: 6,
   },
   emptyCardSub: {
-    color: theme.colors.textSecondary,
     fontSize: 12,
     textAlign: 'center',
-    marginTop: 4,
     lineHeight: 18,
   },
 });

@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import {
   Vehicle,
   FuelEntry,
@@ -19,14 +19,15 @@ import {
   processFuelEntries,
   evaluateMaintenancePlans,
   calculateUnifiedExpenses,
-  MaintenanceStatusResult,
 } from '../services/calculations';
-import { StatCard } from '../components/StatCard';
-import { MaintenancePlanCard } from '../components/MaintenancePlanCard';
+import { VehicleHeroCard } from '../components/VehicleHeroCard';
+import { QuickActions } from '../components/QuickActions';
+import { SummaryMetricCards } from '../components/SummaryMetricCards';
+import { UpcomingMaintenanceWidget } from '../components/UpcomingMaintenanceWidget';
 import { FuelEntryCard } from '../components/FuelEntryCard';
 import { ServiceRecordCard } from '../components/ServiceRecordCard';
 import { ExpenseCard } from '../components/ExpenseCard';
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 
 interface DashboardScreenProps {
   vehicle: Vehicle | null;
@@ -61,12 +62,18 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   onOpenReceipt,
   onNavigateTab,
 }) => {
+  const { theme, isDark } = useTheme();
+
   if (!vehicle) {
     return (
-      <View style={styles.emptyContainer}>
+      <View style={[styles.emptyContainer, { backgroundColor: theme.colors.background }]}>
         <Ionicons name="car-outline" size={48} color={theme.colors.textMuted} />
-        <Text style={styles.emptyTitle}>No Vehicle Selected</Text>
-        <Text style={styles.emptySubtitle}>Add or select a vehicle to view dashboard</Text>
+        <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>
+          No Vehicle Selected
+        </Text>
+        <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
+          Add or select a vehicle to view dashboard
+        </Text>
       </View>
     );
   }
@@ -75,20 +82,20 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   const expenseSummary = calculateUnifiedExpenses(fuelEntries, serviceRecords, expenses, vehicle);
   const evaluatedPlans = evaluateMaintenancePlans(plans, vehicle.currentOdometer);
 
-  // Urgent alerts
-  const urgentPlans = evaluatedPlans.filter(
-    (p) => p.status === 'overdue' || p.status === 'due_soon'
-  );
+  const monthlyDisplayAmount = expenseSummary.currentMonthTotal;
+  const monthlyDisplayLabel = expenseSummary.currentMonthLabel;
 
-  // Recent activity: pick latest items from fuel, services, expenses
+  // Recent activity: latest 3 events
   const recentFuel = processedEntries.slice(0, 2);
   const recentServices = serviceRecords.slice(0, 2);
-  const recentExpenses = expenses.filter((e) => !e.linkedServiceId && !e.linkedFuelId).slice(0, 2);
+  const recentExpenses = expenses
+    .filter((e) => !e.linkedServiceId && !e.linkedFuelId)
+    .slice(0, 2);
 
   return (
     <ScrollView
-      style={styles.container}
-      contentContainerStyle={{ paddingBottom: 100 }}
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      contentContainerStyle={{ paddingBottom: 110 }}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
@@ -99,182 +106,97 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         />
       }
     >
-      {/* Active Vehicle Hero Card */}
-      <View style={styles.heroCard}>
-        <View style={styles.heroTop}>
-          <View>
-            <View style={styles.badgeRow}>
-              <View style={styles.typeTag}>
-                <Ionicons
-                  name={vehicle.type === 'motorcycle' ? 'bicycle' : 'car-sport'}
-                  size={12}
-                  color={theme.colors.primaryLight}
-                />
-                <Text style={styles.typeTagText}>{vehicle.type.toUpperCase()}</Text>
-              </View>
-              {vehicle.regNumber && (
-                <View style={styles.regTag}>
-                  <Text style={styles.regTagText}>{vehicle.regNumber}</Text>
-                </View>
-              )}
-            </View>
-            <Text style={styles.heroName}>{vehicle.name}</Text>
-            <Text style={styles.heroModel}>
-              {vehicle.make} {vehicle.model} • {vehicle.year}
+      {/* 1. Vehicle Hero Card */}
+      <VehicleHeroCard
+        vehicle={vehicle}
+        plans={plans}
+        onPressOdometer={onOpenOdometerModal}
+        onPressService={() => onNavigateTab('Service')}
+      />
+
+      {/* 2. Quick Actions Row */}
+      <QuickActions
+        onAddFuel={onOpenAddFuel}
+        onAddService={() => onOpenAddService()}
+        onAddExpense={onOpenAddExpense}
+        onScanReceipt={onOpenAddExpense}
+      />
+
+      {/* 3. Summary Metric Cards with Sparklines */}
+      <SummaryMetricCards
+        monthlyExpense={monthlyDisplayAmount}
+        monthLabel={monthlyDisplayLabel}
+        fuelEconomy={fuelStats.overallAvgKmL}
+        currency={currency}
+        onPressExpenses={() => onNavigateTab('Expenses')}
+        onPressFuel={() => onNavigateTab('Fuel')}
+      />
+
+      {/* 4. Upcoming Maintenance Section */}
+      <UpcomingMaintenanceWidget
+        plans={plans}
+        vehicle={vehicle}
+        onViewAll={() => onNavigateTab('Service')}
+        onSelectPlan={(plan) => onOpenAddService(plan.id)}
+      />
+
+      {/* 5. Recent Activity List */}
+      <View style={styles.recentSection}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
+            Recent activity
+          </Text>
+          <TouchableOpacity onPress={() => onNavigateTab('Expenses')} activeOpacity={0.7}>
+            <Text style={[styles.viewAllText, { color: theme.colors.primary }]}>History</Text>
+          </TouchableOpacity>
+        </View>
+
+        {recentFuel.length === 0 && recentServices.length === 0 && recentExpenses.length === 0 ? (
+          <View
+            style={[
+              styles.emptyRecentCard,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+              },
+            ]}
+          >
+            <Ionicons name="receipt-outline" size={32} color={theme.colors.textMuted} />
+            <Text style={[styles.emptyRecentText, { color: theme.colors.textSecondary }]}>
+              No recent logs recorded yet. Use quick actions above to add entries.
             </Text>
           </View>
+        ) : (
+          <View style={styles.activityList}>
+            {recentServices.map((service) => (
+              <ServiceRecordCard
+                key={service.id}
+                service={service}
+                currency={currency}
+                onViewReceipt={onOpenReceipt}
+              />
+            ))}
 
-          {/* Odometer Card */}
-          <TouchableOpacity
-            style={styles.heroOdometerBox}
-            onPress={onOpenOdometerModal}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.heroOdoLabel}>ODOMETER</Text>
-            <Text style={styles.heroOdoVal}>{vehicle.currentOdometer.toLocaleString()}</Text>
-            <View style={styles.heroOdoBtn}>
-              <Ionicons name="pencil" size={10} color={theme.colors.primary} />
-              <Text style={styles.heroOdoBtnText}>Update</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
+            {recentFuel.map((entry) => (
+              <FuelEntryCard
+                key={entry.id}
+                entry={entry}
+                currency={currency}
+                onPressReceipt={onOpenReceipt}
+              />
+            ))}
 
-        {/* Quick Action Floating Bar */}
-        <View style={styles.quickBar}>
-          <TouchableOpacity style={styles.quickBtn} onPress={onOpenAddFuel}>
-            <View style={[styles.quickIconCircle, { backgroundColor: 'rgba(6, 182, 212, 0.2)' }]}>
-              <Ionicons name="speedometer-outline" size={16} color={theme.colors.primary} />
-            </View>
-            <Text style={styles.quickBtnText}>+ Fuel</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.quickBtn} onPress={() => onOpenAddService()}>
-            <View style={[styles.quickIconCircle, { backgroundColor: 'rgba(16, 185, 129, 0.2)' }]}>
-              <Ionicons name="construct-outline" size={16} color={theme.colors.secondary} />
-            </View>
-            <Text style={styles.quickBtnText}>+ Service</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.quickBtn} onPress={onOpenAddExpense}>
-            <View style={[styles.quickIconCircle, { backgroundColor: 'rgba(245, 158, 11, 0.2)' }]}>
-              <Ionicons name="receipt-outline" size={16} color={theme.colors.warning} />
-            </View>
-            <Text style={styles.quickBtnText}>+ Expense</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.quickBtn} onPress={onOpenOdometerModal}>
-            <View style={[styles.quickIconCircle, { backgroundColor: 'rgba(139, 92, 246, 0.2)' }]}>
-              <Ionicons name="speedometer" size={16} color={theme.colors.accentLight} />
-            </View>
-            <Text style={styles.quickBtnText}>+ Mileage</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Metric Stats Grid */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>PERFORMANCE & HEALTH</Text>
-      </View>
-      <View style={styles.statsGrid}>
-        <StatCard
-          title="Avg Economy"
-          value={fuelStats.overallAvgKmL > 0 ? fuelStats.overallAvgKmL : '—'}
-          unit="km/L"
-          subtitle={fuelStats.lastKmL ? `Last: ${fuelStats.lastKmL} km/L` : 'Need full fill-ups'}
-          icon="speedometer"
-          accentColor={theme.colors.primary}
-        />
-        <StatCard
-          title="Total Cost"
-          value={`${(expenseSummary.totalCost / 1000).toFixed(1)}k`}
-          unit={currency}
-          subtitle={`Cost/km: ${currency} ${expenseSummary.costPerKm.toFixed(2)}`}
-          icon="cash-outline"
-          accentColor={theme.colors.secondary}
-        />
-      </View>
-
-      {/* Urgent Maintenance Banner */}
-      {urgentPlans.length > 0 && (
-        <View style={styles.urgentSection}>
-          <View style={styles.urgentHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Ionicons name="warning" size={16} color={theme.colors.warning} />
-              <Text style={styles.urgentTitle}>
-                ATTENTION REQUIRED ({urgentPlans.length} DUE)
-              </Text>
-            </View>
-            <TouchableOpacity onPress={() => onNavigateTab('maintenance')}>
-              <Text style={styles.viewAllText}>View All Plans →</Text>
-            </TouchableOpacity>
+            {recentExpenses.map((expense) => (
+              <ExpenseCard
+                key={expense.id}
+                expense={expense}
+                currency={currency}
+                onViewReceipt={onOpenReceipt}
+              />
+            ))}
           </View>
-
-          {urgentPlans.slice(0, 2).map((item) => (
-            <MaintenancePlanCard
-              key={item.plan.id}
-              item={item}
-              onLogService={(plan) => onOpenAddService(plan.plan.id)}
-            />
-          ))}
-        </View>
-      )}
-
-      {/* Upcoming Maintenance Preview */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>MAINTENANCE SCHEDULE</Text>
-        <TouchableOpacity onPress={() => onNavigateTab('maintenance')}>
-          <Text style={styles.viewAllText}>Manage Plans</Text>
-        </TouchableOpacity>
+        )}
       </View>
-
-      {evaluatedPlans.slice(0, 2).map((item) => (
-        <MaintenancePlanCard
-          key={item.plan.id}
-          item={item}
-          onLogService={(plan) => onOpenAddService(plan.plan.id)}
-        />
-      ))}
-
-      {/* Recent Activity Feed */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>RECENT ACTIVITY</Text>
-        <TouchableOpacity onPress={() => onNavigateTab('fuel')}>
-          <Text style={styles.viewAllText}>View Logs</Text>
-        </TouchableOpacity>
-      </View>
-
-      {recentFuel.length === 0 && recentServices.length === 0 && (
-        <View style={styles.emptyFeed}>
-          <Text style={styles.emptyFeedText}>No recent fuel or service activities recorded.</Text>
-        </View>
-      )}
-
-      {recentFuel.map((entry) => (
-        <FuelEntryCard
-          key={entry.id}
-          entry={entry}
-          currency={currency}
-          onPressReceipt={onOpenReceipt}
-        />
-      ))}
-
-      {recentServices.map((record) => (
-        <ServiceRecordCard
-          key={record.id}
-          record={record}
-          currency={currency}
-          onPressReceipt={onOpenReceipt}
-        />
-      ))}
-
-      {recentExpenses.map((expense) => (
-        <ExpenseCard
-          key={expense.id}
-          expense={expense}
-          currency={currency}
-          onPressReceipt={onOpenReceipt}
-        />
-      ))}
     </ScrollView>
   );
 };
@@ -282,185 +204,55 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
-    paddingHorizontal: 16,
-    paddingTop: 12,
   },
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 32,
+    gap: 12,
   },
   emptyTitle: {
-    color: theme.colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 12,
+    fontSize: 20,
+    fontWeight: '800',
   },
   emptySubtitle: {
-    color: theme.colors.textSecondary,
-    fontSize: 13,
-    marginTop: 4,
+    fontSize: 14,
+    textAlign: 'center',
   },
-  heroCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: theme.colors.cardBorderActive,
-    marginBottom: 16,
-  },
-  heroTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
-  },
-  typeTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: theme.colors.primaryMuted,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  typeTagText: {
-    color: theme.colors.primaryLight,
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  regTag: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  regTagText: {
-    color: theme.colors.textSecondary,
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  heroName: {
-    color: theme.colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  heroModel: {
-    color: theme.colors.textSecondary,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  heroOdometerBox: {
-    backgroundColor: theme.colors.background,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
-  },
-  heroOdoLabel: {
-    color: theme.colors.textMuted,
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  heroOdoVal: {
-    color: theme.colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  heroOdoBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    marginTop: 4,
-  },
-  heroOdoBtnText: {
-    color: theme.colors.primary,
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  quickBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
-  },
-  quickBtn: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  quickIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
-  quickBtnText: {
-    color: theme.colors.textPrimary,
-    fontSize: 11,
-    fontWeight: '600',
+  recentSection: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   sectionTitle: {
-    color: theme.colors.textMuted,
-    fontSize: 11,
+    fontSize: 18,
     fontWeight: '800',
-    letterSpacing: 1,
+    letterSpacing: -0.2,
   },
   viewAllText: {
-    color: theme.colors.primary,
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
   },
-  statsGrid: {
-    flexDirection: 'row',
+  activityList: {
     gap: 10,
-    marginBottom: 16,
   },
-  urgentSection: {
-    marginBottom: 16,
-  },
-  urgentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  urgentTitle: {
-    color: theme.colors.warning,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  emptyFeed: {
-    padding: 16,
+  emptyRecentCard: {
+    borderRadius: 18,
+    padding: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.colors.surface,
-    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
   },
-  emptyFeedText: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
+  emptyRecentText: {
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

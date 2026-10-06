@@ -12,7 +12,7 @@ import { ExpenseRecord, ExpenseCategory, Vehicle, FuelEntry, ServiceRecord } fro
 import { calculateUnifiedExpenses } from '../services/calculations';
 import { ExpenseCard } from '../components/ExpenseCard';
 import { StatCard } from '../components/StatCard';
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 
 interface ExpensesScreenProps {
   vehicle: Vehicle | null;
@@ -35,19 +35,20 @@ export const ExpensesScreen: React.FC<ExpensesScreenProps> = ({
   onOpenReceipt,
   onDeleteExpense,
 }) => {
+  const { theme, isDark } = useTheme();
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategory | 'all'>('all');
 
   if (!vehicle) {
     return (
-      <View style={styles.emptyContainer}>
-        <Text style={styles.emptyText}>Please select a vehicle</Text>
+      <View style={[styles.emptyContainer, { backgroundColor: theme.colors.background }]}>
+        <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
+          Please select a vehicle
+        </Text>
       </View>
     );
   }
 
   const unified = calculateUnifiedExpenses(fuelEntries, serviceRecords, expenses, vehicle);
-
-  // Filter out any linked items from standalone expenses list to guarantee no duplicate views
   const standaloneExpenses = expenses.filter((e) => !e.linkedServiceId && !e.linkedFuelId);
 
   const filteredExpenses = standaloneExpenses.filter((e) => {
@@ -81,16 +82,28 @@ export const ExpensesScreen: React.FC<ExpensesScreenProps> = ({
   ];
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 100 }}>
-      {/* Top Header */}
+    <ScrollView
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      contentContainerStyle={{ paddingBottom: 110 }}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Header */}
       <View style={styles.topHeader}>
         <View>
-          <Text style={styles.screenTitle}>Expense Ledger</Text>
-          <Text style={styles.screenSub}>Unified Non-Duplicated Ownership Costs</Text>
+          <Text style={[styles.screenTitle, { color: theme.colors.textPrimary }]}>
+            Unified Expense Ledger
+          </Text>
+          <Text style={[styles.screenSub, { color: theme.colors.textSecondary }]}>
+            Non-Duplicating Vehicle Ownership Cost
+          </Text>
         </View>
 
-        <TouchableOpacity style={styles.addBtn} onPress={onOpenAddExpense} activeOpacity={0.8}>
-          <Ionicons name="add" size={18} color="#0B0F19" />
+        <TouchableOpacity
+          style={[styles.addBtn, { backgroundColor: theme.colors.primary }]}
+          onPress={onOpenAddExpense}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="add" size={18} color="#FFFFFF" />
           <Text style={styles.addBtnText}>Log Expense</Text>
         </TouchableOpacity>
       </View>
@@ -99,47 +112,82 @@ export const ExpensesScreen: React.FC<ExpensesScreenProps> = ({
       <View style={styles.statsRow}>
         <StatCard
           title="Total Recorded"
-          value={`${currency} ${(unified.totalCost / 1000).toFixed(1)}k`}
-          subtitle={`Fuel: ${(unified.fuelTotal / 1000).toFixed(1)}k • Srv: ${(unified.serviceTotal / 1000).toFixed(1)}k`}
+          value={`${currency} ${unified.totalCost.toLocaleString()}`}
+          subtitle={`Fuel: ${currency} ${unified.fuelTotal.toLocaleString()}`}
           icon="wallet-outline"
-          accentColor={theme.colors.warning}
+          accentColor={theme.colors.primary}
         />
         <StatCard
           title="Cost / km"
-          value={`${currency} ${unified.costPerKm.toFixed(2)}`}
-          unit="/km"
-          subtitle={`Over ${vehicle.currentOdometer.toLocaleString()} km`}
-          icon="analytics-outline"
-          accentColor={theme.colors.primary}
+          value={unified.costPerKm ? unified.costPerKm.toFixed(2) : '—'}
+          unit={`${currency}/km`}
+          subtitle={`Service: ${currency} ${unified.serviceTotal.toLocaleString()}`}
+          icon="trending-up-outline"
+          accentColor={theme.colors.secondary}
         />
       </View>
 
-      {/* Category Filter Pills */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersScroll}>
-        {categories.map((c) => {
-          const isSelected = selectedCategory === c.key;
+      {/* Category Pills */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.categoryScroll}
+        contentContainerStyle={styles.categoryContainer}
+      >
+        {categories.map((cat) => {
+          const isActive = selectedCategory === cat.key;
           return (
             <TouchableOpacity
-              key={c.key}
-              style={[styles.filterPill, isSelected && styles.filterPillActive]}
-              onPress={() => setSelectedCategory(c.key)}
+              key={cat.key}
+              style={[
+                styles.categoryChip,
+                {
+                  backgroundColor: isActive
+                    ? theme.colors.primaryMuted
+                    : theme.colors.surface,
+                  borderColor: isActive
+                    ? theme.colors.primary
+                    : isDark
+                    ? 'rgba(255,255,255,0.08)'
+                    : '#E2E8F0',
+                },
+              ]}
+              onPress={() => setSelectedCategory(cat.key)}
             >
-              <Text style={[styles.filterText, isSelected && styles.filterTextActive]}>
-                {c.label}
+              <Text
+                style={[
+                  styles.categoryChipText,
+                  {
+                    color: isActive ? theme.colors.primary : theme.colors.textSecondary,
+                    fontWeight: isActive ? '800' : '600',
+                  },
+                ]}
+              >
+                {cat.label}
               </Text>
             </TouchableOpacity>
           );
         })}
       </ScrollView>
 
-      {/* Expense List */}
-      <View style={{ marginTop: 10 }}>
+      {/* Expenses List */}
+      <View style={styles.listSection}>
         {filteredExpenses.length === 0 ? (
-          <View style={styles.emptyCard}>
+          <View
+            style={[
+              styles.emptyCard,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+              },
+            ]}
+          >
             <Ionicons name="receipt-outline" size={36} color={theme.colors.textMuted} />
-            <Text style={styles.emptyCardTitle}>No Expenses In This Category</Text>
-            <Text style={styles.emptyCardSub}>
-              Tap 'Log Expense' to record insurance renewals, repair bills, modifications, and accessories.
+            <Text style={[styles.emptyCardTitle, { color: theme.colors.textPrimary }]}>
+              No Expenses in this Category
+            </Text>
+            <Text style={[styles.emptyCardSub, { color: theme.colors.textSecondary }]}>
+              Tap 'Log Expense' to add insurance renewals, revenue licenses, accessories or repairs.
             </Text>
           </View>
         ) : (
@@ -161,7 +209,6 @@ export const ExpensesScreen: React.FC<ExpensesScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
     paddingHorizontal: 16,
     paddingTop: 12,
   },
@@ -172,7 +219,6 @@ const styles = StyleSheet.create({
     padding: 32,
   },
   emptyText: {
-    color: theme.colors.textSecondary,
     fontSize: 14,
   },
   topHeader: {
@@ -182,12 +228,10 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   screenTitle: {
-    color: theme.colors.textPrimary,
     fontSize: 18,
     fontWeight: '800',
   },
   screenSub: {
-    color: theme.colors.textSecondary,
     fontSize: 11,
     marginTop: 2,
   },
@@ -195,13 +239,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: theme.colors.warning,
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 10,
+    borderRadius: 12,
   },
   addBtnText: {
-    color: '#0B0F19',
+    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
   },
@@ -210,53 +253,42 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 16,
   },
-  filtersScroll: {
-    flexDirection: 'row',
-    marginBottom: 10,
+  categoryScroll: {
+    marginBottom: 14,
   },
-  filterPill: {
-    paddingHorizontal: 12,
+  categoryContainer: {
+    gap: 8,
+    paddingRight: 16,
+  },
+  categoryChip: {
+    paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
-    marginRight: 8,
   },
-  filterPillActive: {
-    backgroundColor: theme.colors.warningMuted,
-    borderColor: theme.colors.warning,
-  },
-  filterText: {
-    color: theme.colors.textSecondary,
+  categoryChipText: {
     fontSize: 12,
-    fontWeight: '600',
   },
-  filterTextActive: {
-    color: theme.colors.warning,
-    fontWeight: '700',
+  listSection: {
+    gap: 10,
   },
   emptyCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: 14,
+    borderRadius: 18,
     padding: 24,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
     marginTop: 10,
+    gap: 4,
   },
   emptyCardTitle: {
-    color: theme.colors.textPrimary,
     fontSize: 15,
     fontWeight: '700',
-    marginTop: 10,
+    marginTop: 6,
   },
   emptyCardSub: {
-    color: theme.colors.textSecondary,
     fontSize: 12,
     textAlign: 'center',
-    marginTop: 4,
     lineHeight: 18,
   },
 });
