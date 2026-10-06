@@ -1,4 +1,5 @@
-import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
+import type * as SQLite from 'expo-sqlite';
 import {
   Vehicle,
   OdometerEntry,
@@ -9,18 +10,48 @@ import {
   AppSettings,
 } from '../types';
 
-let dbInstance: SQLite.SQLiteDatabase | null = null;
+type SQLiteDatabase = SQLite.SQLiteDatabase;
+let SQLiteModule: any = null;
+let dbInstance: SQLiteDatabase | null = null;
 
-export async function getDb(): Promise<SQLite.SQLiteDatabase> {
-  if (!dbInstance) {
-    dbInstance = await SQLite.openDatabaseAsync('fixmate_v1.db');
-    await dbInstance.execAsync('PRAGMA foreign_keys = ON;');
+// In-memory web fallback stores
+let webVehicles: Vehicle[] = [];
+let webOdometer: OdometerEntry[] = [];
+let webFuel: FuelEntry[] = [];
+let webPlans: MaintenancePlan[] = [];
+let webServices: ServiceRecord[] = [];
+let webExpenses: ExpenseRecord[] = [];
+let webSettings: Record<string, string> = {
+  currency: 'LKR',
+  distanceUnit: 'km',
+  volumeUnit: 'L',
+  enableNotifications: 'true',
+  theme: 'dark',
+};
+
+export async function getDb(): Promise<SQLiteDatabase | null> {
+  if (Platform.OS === 'web') return null;
+  if (!SQLiteModule) {
+    SQLiteModule = require('expo-sqlite');
+  }
+  if (!dbInstance && SQLiteModule) {
+    const instance = await SQLiteModule.openDatabaseAsync('fixmate_v1.db');
+    await instance.execAsync('PRAGMA foreign_keys = ON;');
+    dbInstance = instance;
   }
   return dbInstance;
 }
 
 export async function initDatabase(): Promise<void> {
+  if (Platform.OS === 'web') {
+    if (webVehicles.length === 0) {
+      await seedDemoData();
+    }
+    return;
+  }
+
   const db = await getDb();
+  if (!db) return;
 
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS vehicles (
@@ -133,7 +164,6 @@ export async function initDatabase(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_odometer_vehicle ON odometer_entries(vehicleId, date);
   `);
 
-  // Initialize default app settings if not exists
   const settingsCount = await db.getFirstAsync<{ count: number }>(
     'SELECT COUNT(*) as count FROM app_settings'
   );
@@ -153,7 +183,6 @@ export async function initDatabase(): Promise<void> {
     }
   }
 
-  // Check if any vehicle exists, if not create a sample vehicle so user has instant experience
   const vehicleCount = await db.getFirstAsync<{ count: number }>(
     'SELECT COUNT(*) as count FROM vehicles'
   );
@@ -165,7 +194,11 @@ export async function initDatabase(): Promise<void> {
 // ----------------- VEHICLES CRUD -----------------
 
 export async function getAllVehicles(): Promise<Vehicle[]> {
+  if (Platform.OS === 'web') {
+    return [...webVehicles].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
+  }
   const db = await getDb();
+  if (!db) return [];
   const rows = await db.getAllAsync<any>(
     'SELECT * FROM vehicles ORDER BY isPrimary DESC, createdAt DESC'
   );
@@ -176,7 +209,11 @@ export async function getAllVehicles(): Promise<Vehicle[]> {
 }
 
 export async function getVehicleById(id: string): Promise<Vehicle | null> {
+  if (Platform.OS === 'web') {
+    return webVehicles.find((v) => v.id === id) || null;
+  }
   const db = await getDb();
+  if (!db) return null;
   const row = await db.getFirstAsync<any>(
     'SELECT * FROM vehicles WHERE id = ?',
     [id]
@@ -189,7 +226,25 @@ export async function getVehicleById(id: string): Promise<Vehicle | null> {
 }
 
 export async function insertVehicle(vehicle: Vehicle): Promise<void> {
+  if (Platform.OS === 'web') {
+    webVehicles = webVehicles.filter((v) => v.id !== vehicle.id);
+    webVehicles.unshift(vehicle);
+    await insertOdometerEntry({
+      id: `odo_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      vehicleId: vehicle.id,
+      odometer: vehicle.currentOdometer,
+      date: new Date().toISOString(),
+      notes: 'Initial odometer reading',
+      source: 'manual',
+      createdAt: new Date().toISOString(),
+    });
+    await createDefaultMaintenancePlans(vehicle.id, vehicle.currentOdometer);
+    return;
+  }
+
   const db = await getDb();
+  if (!db) return;
+
   await db.runAsync(
     `INSERT INTO vehicles (id, name, type, make, model, year, regNumber, currentOdometer, photoUri, purchaseDate, vin, fuelType, isPrimary, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -212,7 +267,6 @@ export async function insertVehicle(vehicle: Vehicle): Promise<void> {
     ]
   );
 
-  // Also log initial odometer entry
   await insertOdometerEntry({
     id: `odo_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
     vehicleId: vehicle.id,
@@ -223,12 +277,17 @@ export async function insertVehicle(vehicle: Vehicle): Promise<void> {
     createdAt: new Date().toISOString(),
   });
 
-  // Create default maintenance plans for this vehicle
   await createDefaultMaintenancePlans(vehicle.id, vehicle.currentOdometer);
 }
 
 export async function updateVehicle(vehicle: Vehicle): Promise<void> {
+  if (Platform.OS === 'web') {
+    const idx = webVehicles.findIndex((v) => v.id === vehicle.id);
+    if (idx !== -1) webVehicles[idx] = vehicle;
+    return;
+  }
   const db = await getDb();
+  if (!db) return;
   await db.runAsync(
     `UPDATE vehicles 
      SET name = ?, type = ?, make = ?, model = ?, year = ?, regNumber = ?, currentOdometer = ?, photoUri = ?, purchaseDate = ?, vin = ?, fuelType = ?, isPrimary = ?, updatedAt = ?
@@ -258,11 +317,29 @@ export async function updateVehicleOdometer(
   source: 'manual' | 'fuel' | 'service' | 'expense' = 'manual',
   notes?: string
 ): Promise<void> {
+  if (Platform.OS === 'web') {
+    const v = webVehicles.find((item) => item.id === vehicleId);
+    if (v && (newOdometer > v.currentOdometer || source === 'manual')) {
+      v.currentOdometer = newOdometer;
+      v.updatedAt = new Date().toISOString();
+    }
+    await insertOdometerEntry({
+      id: `odo_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      vehicleId,
+      odometer: newOdometer,
+      date: new Date().toISOString(),
+      notes: notes || `Logged via ${source}`,
+      source,
+      createdAt: new Date().toISOString(),
+    });
+    return;
+  }
+
   const db = await getDb();
+  if (!db) return;
   const current = await getVehicleById(vehicleId);
   if (!current) return;
 
-  // Update vehicle current odometer if higher or if manual correction
   if (newOdometer > current.currentOdometer || source === 'manual') {
     await db.runAsync(
       'UPDATE vehicles SET currentOdometer = ?, updatedAt = ? WHERE id = ?',
@@ -270,7 +347,6 @@ export async function updateVehicleOdometer(
     );
   }
 
-  // Insert odometer history
   await insertOdometerEntry({
     id: `odo_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
     vehicleId,
@@ -283,14 +359,29 @@ export async function updateVehicleOdometer(
 }
 
 export async function deleteVehicle(id: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    webVehicles = webVehicles.filter((v) => v.id !== id);
+    webOdometer = webOdometer.filter((o) => o.vehicleId !== id);
+    webFuel = webFuel.filter((f) => f.vehicleId !== id);
+    webPlans = webPlans.filter((p) => p.vehicleId !== id);
+    webServices = webServices.filter((s) => s.vehicleId !== id);
+    webExpenses = webExpenses.filter((e) => e.vehicleId !== id);
+    return;
+  }
   const db = await getDb();
+  if (!db) return;
   await db.runAsync('DELETE FROM vehicles WHERE id = ?', [id]);
 }
 
 // ----------------- ODOMETER ENTRIES -----------------
 
 export async function insertOdometerEntry(entry: OdometerEntry): Promise<void> {
+  if (Platform.OS === 'web') {
+    webOdometer.unshift(entry);
+    return;
+  }
   const db = await getDb();
+  if (!db) return;
   await db.runAsync(
     `INSERT INTO odometer_entries (id, vehicleId, odometer, date, notes, source, createdAt)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -307,7 +398,11 @@ export async function insertOdometerEntry(entry: OdometerEntry): Promise<void> {
 }
 
 export async function getOdometerEntries(vehicleId: string): Promise<OdometerEntry[]> {
+  if (Platform.OS === 'web') {
+    return webOdometer.filter((o) => o.vehicleId === vehicleId);
+  }
   const db = await getDb();
+  if (!db) return [];
   return await db.getAllAsync<OdometerEntry>(
     'SELECT * FROM odometer_entries WHERE vehicleId = ? ORDER BY date DESC, odometer DESC',
     [vehicleId]
@@ -317,7 +412,13 @@ export async function getOdometerEntries(vehicleId: string): Promise<OdometerEnt
 // ----------------- FUEL ENTRIES -----------------
 
 export async function insertFuelEntry(entry: FuelEntry): Promise<void> {
+  if (Platform.OS === 'web') {
+    webFuel.unshift(entry);
+    await updateVehicleOdometer(entry.vehicleId, entry.odometer, 'fuel', `Fuel fill-up: ${entry.litres.toFixed(1)}L`);
+    return;
+  }
   const db = await getDb();
+  if (!db) return;
   await db.runAsync(
     `INSERT INTO fuel_entries (id, vehicleId, date, odometer, litres, totalCost, pricePerLitre, isFullTank, fuelStation, notes, receiptUri, createdAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -337,12 +438,15 @@ export async function insertFuelEntry(entry: FuelEntry): Promise<void> {
     ]
   );
 
-  // Update odometer if higher
   await updateVehicleOdometer(entry.vehicleId, entry.odometer, 'fuel', `Fuel fill-up: ${entry.litres.toFixed(1)}L`);
 }
 
 export async function getFuelEntries(vehicleId: string): Promise<FuelEntry[]> {
+  if (Platform.OS === 'web') {
+    return webFuel.filter((f) => f.vehicleId === vehicleId).sort((a, b) => a.odometer - b.odometer);
+  }
   const db = await getDb();
+  if (!db) return [];
   const rows = await db.getAllAsync<any>(
     'SELECT * FROM fuel_entries WHERE vehicleId = ? ORDER BY odometer ASC, date ASC',
     [vehicleId]
@@ -354,14 +458,23 @@ export async function getFuelEntries(vehicleId: string): Promise<FuelEntry[]> {
 }
 
 export async function deleteFuelEntry(id: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    webFuel = webFuel.filter((f) => f.id !== id);
+    return;
+  }
   const db = await getDb();
+  if (!db) return;
   await db.runAsync('DELETE FROM fuel_entries WHERE id = ?', [id]);
 }
 
 // ----------------- MAINTENANCE PLANS -----------------
 
 export async function getMaintenancePlans(vehicleId: string): Promise<MaintenancePlan[]> {
+  if (Platform.OS === 'web') {
+    return webPlans.filter((p) => p.vehicleId === vehicleId).sort((a, b) => a.nextDueMileage - b.nextDueMileage);
+  }
   const db = await getDb();
+  if (!db) return [];
   const rows = await db.getAllAsync<any>(
     'SELECT * FROM maintenance_plans WHERE vehicleId = ? ORDER BY nextDueMileage ASC',
     [vehicleId]
@@ -373,7 +486,12 @@ export async function getMaintenancePlans(vehicleId: string): Promise<Maintenanc
 }
 
 export async function insertMaintenancePlan(plan: MaintenancePlan): Promise<void> {
+  if (Platform.OS === 'web') {
+    webPlans.push(plan);
+    return;
+  }
   const db = await getDb();
+  if (!db) return;
   await db.runAsync(
     `INSERT INTO maintenance_plans (id, vehicleId, title, category, intervalKm, intervalMonths, lastServiceMileage, lastServiceDate, nextDueMileage, nextDueDate, notes, isCustom, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -397,7 +515,13 @@ export async function insertMaintenancePlan(plan: MaintenancePlan): Promise<void
 }
 
 export async function updateMaintenancePlan(plan: MaintenancePlan): Promise<void> {
+  if (Platform.OS === 'web') {
+    const idx = webPlans.findIndex((p) => p.id === plan.id);
+    if (idx !== -1) webPlans[idx] = plan;
+    return;
+  }
   const db = await getDb();
+  if (!db) return;
   await db.runAsync(
     `UPDATE maintenance_plans 
      SET title = ?, category = ?, intervalKm = ?, intervalMonths = ?, lastServiceMileage = ?, lastServiceDate = ?, nextDueMileage = ?, nextDueDate = ?, notes = ?, updatedAt = ?
@@ -419,7 +543,12 @@ export async function updateMaintenancePlan(plan: MaintenancePlan): Promise<void
 }
 
 export async function deleteMaintenancePlan(id: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    webPlans = webPlans.filter((p) => p.id !== id);
+    return;
+  }
   const db = await getDb();
+  if (!db) return;
   await db.runAsync('DELETE FROM maintenance_plans WHERE id = ?', [id]);
 }
 
@@ -474,30 +603,6 @@ export async function createDefaultMaintenancePlans(vehicleId: string, currentOd
       notes: 'Balanced tyre wear increases longevity',
       isCustom: false,
     },
-    {
-      title: 'Spark Plugs Replacement',
-      category: 'spark_plugs',
-      intervalKm: 30000,
-      intervalMonths: 24,
-      lastServiceMileage: currentOdo,
-      lastServiceDate: now.toISOString(),
-      nextDueMileage: currentOdo + 30000,
-      nextDueDate: new Date(now.getFullYear(), now.getMonth() + 24, now.getDate()).toISOString(),
-      notes: 'Iridium / Platinum standard',
-      isCustom: false,
-    },
-    {
-      title: 'Coolant Flush',
-      category: 'coolant',
-      intervalKm: 40000,
-      intervalMonths: 24,
-      lastServiceMileage: currentOdo,
-      lastServiceDate: now.toISOString(),
-      nextDueMileage: currentOdo + 40000,
-      nextDueDate: new Date(now.getFullYear(), now.getMonth() + 24, now.getDate()).toISOString(),
-      notes: 'Prevents engine overheating',
-      isCustom: false,
-    },
   ];
 
   for (let i = 0; i < defaultPlans.length; i++) {
@@ -515,7 +620,24 @@ export async function createDefaultMaintenancePlans(vehicleId: string, currentOd
 // ----------------- SERVICE RECORDS -----------------
 
 export async function insertServiceRecord(record: ServiceRecord): Promise<void> {
+  if (Platform.OS === 'web') {
+    webServices.unshift(record);
+    if (record.planId) {
+      const plan = webPlans.find((p) => p.id === record.planId);
+      if (plan) {
+        plan.lastServiceMileage = record.odometer;
+        plan.lastServiceDate = record.date;
+        plan.nextDueMileage = record.odometer + plan.intervalKm;
+        const svcDate = new Date(record.date);
+        plan.nextDueDate = new Date(svcDate.getFullYear(), svcDate.getMonth() + plan.intervalMonths, svcDate.getDate()).toISOString();
+      }
+    }
+    await updateVehicleOdometer(record.vehicleId, record.odometer, 'service', `Service: ${record.title}`);
+    return;
+  }
+
   const db = await getDb();
+  if (!db) return;
   await db.runAsync(
     `INSERT INTO service_records (id, vehicleId, planId, title, serviceType, date, odometer, garageName, labourCost, partsCost, totalCost, notes, receiptUri, partsList, createdAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -538,7 +660,6 @@ export async function insertServiceRecord(record: ServiceRecord): Promise<void> 
     ]
   );
 
-  // If connected to a maintenance plan, update plan's last service and recalculate next due!
   if (record.planId) {
     const plan = await db.getFirstAsync<MaintenancePlan>(
       'SELECT * FROM maintenance_plans WHERE id = ?',
@@ -569,12 +690,15 @@ export async function insertServiceRecord(record: ServiceRecord): Promise<void> 
     }
   }
 
-  // Update vehicle odometer if higher
   await updateVehicleOdometer(record.vehicleId, record.odometer, 'service', `Service: ${record.title}`);
 }
 
 export async function getServiceRecords(vehicleId: string): Promise<ServiceRecord[]> {
+  if (Platform.OS === 'web') {
+    return webServices.filter((s) => s.vehicleId === vehicleId);
+  }
   const db = await getDb();
+  if (!db) return [];
   return await db.getAllAsync<ServiceRecord>(
     'SELECT * FROM service_records WHERE vehicleId = ? ORDER BY date DESC, odometer DESC',
     [vehicleId]
@@ -582,14 +706,27 @@ export async function getServiceRecords(vehicleId: string): Promise<ServiceRecor
 }
 
 export async function deleteServiceRecord(id: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    webServices = webServices.filter((s) => s.id !== id);
+    return;
+  }
   const db = await getDb();
+  if (!db) return;
   await db.runAsync('DELETE FROM service_records WHERE id = ?', [id]);
 }
 
 // ----------------- EXPENSES -----------------
 
 export async function insertExpense(expense: ExpenseRecord): Promise<void> {
+  if (Platform.OS === 'web') {
+    webExpenses.unshift(expense);
+    if (expense.odometer) {
+      await updateVehicleOdometer(expense.vehicleId, expense.odometer, 'expense', expense.title);
+    }
+    return;
+  }
   const db = await getDb();
+  if (!db) return;
   await db.runAsync(
     `INSERT INTO expenses (id, vehicleId, category, title, amount, date, odometer, vendor, notes, receiptUri, linkedServiceId, linkedFuelId, createdAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -616,7 +753,11 @@ export async function insertExpense(expense: ExpenseRecord): Promise<void> {
 }
 
 export async function getExpenses(vehicleId: string): Promise<ExpenseRecord[]> {
+  if (Platform.OS === 'web') {
+    return webExpenses.filter((e) => e.vehicleId === vehicleId);
+  }
   const db = await getDb();
+  if (!db) return [];
   return await db.getAllAsync<ExpenseRecord>(
     'SELECT * FROM expenses WHERE vehicleId = ? ORDER BY date DESC',
     [vehicleId]
@@ -624,14 +765,38 @@ export async function getExpenses(vehicleId: string): Promise<ExpenseRecord[]> {
 }
 
 export async function deleteExpense(id: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    webExpenses = webExpenses.filter((e) => e.id !== id);
+    return;
+  }
   const db = await getDb();
+  if (!db) return;
   await db.runAsync('DELETE FROM expenses WHERE id = ?', [id]);
 }
 
 // ----------------- APP SETTINGS -----------------
 
 export async function getSettings(): Promise<AppSettings> {
+  if (Platform.OS === 'web') {
+    return {
+      currency: webSettings.currency || 'LKR',
+      distanceUnit: (webSettings.distanceUnit as 'km' | 'mi') || 'km',
+      volumeUnit: (webSettings.volumeUnit as 'L' | 'gal') || 'L',
+      enableNotifications: webSettings.enableNotifications === 'true',
+      activeVehicleId: webSettings.activeVehicleId,
+      theme: (webSettings.theme as 'dark' | 'light') || 'dark',
+    };
+  }
   const db = await getDb();
+  if (!db) {
+    return {
+      currency: 'LKR',
+      distanceUnit: 'km',
+      volumeUnit: 'L',
+      enableNotifications: true,
+      theme: 'dark',
+    };
+  }
   const rows = await db.getAllAsync<{ key: string; value: string }>(
     'SELECT key, value FROM app_settings'
   );
@@ -651,7 +816,12 @@ export async function getSettings(): Promise<AppSettings> {
 }
 
 export async function saveSetting(key: string, value: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    webSettings[key] = value;
+    return;
+  }
   const db = await getDb();
+  if (!db) return;
   await db.runAsync(
     'INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)',
     [key, value]
@@ -681,11 +851,8 @@ export async function seedDemoData(): Promise<void> {
   };
 
   await insertVehicle(vehicle);
-
-  // Set active vehicle
   await saveSetting('activeVehicleId', vehicleId);
 
-  // Add realistic Fuel Fill-ups with both full & partial fill-ups to demonstrate fuel calculation accurately
   const fuelEntries: Omit<FuelEntry, 'id'>[] = [
     {
       vehicleId,
@@ -703,7 +870,7 @@ export async function seedDemoData(): Promise<void> {
       vehicleId,
       date: new Date(now.getTime() - 28 * 24 * 3600 * 1000).toISOString(),
       odometer: 41550,
-      litres: 15.0, // Partial fill
+      litres: 15.0,
       totalCost: 5550,
       pricePerLitre: 370,
       isFullTank: false,
@@ -715,7 +882,7 @@ export async function seedDemoData(): Promise<void> {
       vehicleId,
       date: new Date(now.getTime() - 15 * 24 * 3600 * 1000).toISOString(),
       odometer: 41980,
-      litres: 37.5, // Full fill (Interval distance = 41980 - 41200 = 780km, Fuel = 15 + 37.5 = 52.5L -> 14.85 km/L)
+      litres: 37.5,
       totalCost: 13875,
       pricePerLitre: 370,
       isFullTank: true,
@@ -727,7 +894,7 @@ export async function seedDemoData(): Promise<void> {
       vehicleId,
       date: new Date(now.getTime() - 3 * 24 * 3600 * 1000).toISOString(),
       odometer: 42350,
-      litres: 26.2, // Full fill (Interval = 370km, Fuel = 26.2L -> 14.12 km/L)
+      litres: 26.2,
       totalCost: 9694,
       pricePerLitre: 370,
       isFullTank: true,
@@ -744,7 +911,6 @@ export async function seedDemoData(): Promise<void> {
     });
   }
 
-  // Add realistic past Service Records
   const serviceRecords: Omit<ServiceRecord, 'id'>[] = [
     {
       vehicleId,
@@ -760,20 +926,6 @@ export async function seedDemoData(): Promise<void> {
       partsList: 'Engine Oil 4L, Oil Filter, Engine Air Filter, Brake Fluid DOT4',
       createdAt: new Date(now.getTime() - 60 * 24 * 3600 * 1000).toISOString(),
     },
-    {
-      vehicleId,
-      title: 'Front Brake Pads Replacement',
-      serviceType: 'Brakes',
-      date: new Date(now.getTime() - 120 * 24 * 3600 * 1000).toISOString(),
-      odometer: 35000,
-      garageName: 'Sterling Aftercare Hub',
-      labourCost: 3500,
-      partsCost: 12800,
-      totalCost: 16300,
-      notes: 'Akebono Ceramic front brake pads fitted',
-      partsList: 'Front Brake Pad Set (Akebono)',
-      createdAt: new Date(now.getTime() - 120 * 24 * 3600 * 1000).toISOString(),
-    },
   ];
 
   for (let i = 0; i < serviceRecords.length; i++) {
@@ -783,7 +935,6 @@ export async function seedDemoData(): Promise<void> {
     });
   }
 
-  // Add Expenses (Insurance, Revenue Licence, Cleaning)
   const expenses: Omit<ExpenseRecord, 'id'>[] = [
     {
       vehicleId,
@@ -794,26 +945,6 @@ export async function seedDemoData(): Promise<void> {
       vendor: 'Sri Lanka Insurance Corp',
       notes: 'Full policy renewal for 2026',
       createdAt: new Date(now.getFullYear(), 0, 15).toISOString(),
-    },
-    {
-      vehicleId,
-      category: 'registration',
-      title: 'Annual Revenue Licence & Emission Test',
-      amount: 8200,
-      date: new Date(now.getFullYear(), 0, 20).toISOString(),
-      vendor: 'DriveGreen & Divisional Secretariat',
-      notes: 'Eco test passed, sticker issued',
-      createdAt: new Date(now.getFullYear(), 0, 20).toISOString(),
-    },
-    {
-      vehicleId,
-      category: 'accessories',
-      title: '70mai Dual Dash Cam & 128GB SD Card',
-      amount: 22500,
-      date: new Date(now.getTime() - 50 * 24 * 3600 * 1000).toISOString(),
-      vendor: 'Daraz Audio & Tech',
-      notes: 'Front and rear 1080p recording kit',
-      createdAt: new Date(now.getTime() - 50 * 24 * 3600 * 1000).toISOString(),
     },
   ];
 

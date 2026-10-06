@@ -1,4 +1,4 @@
-import {
+import type {
   FuelEntry,
   MaintenancePlan,
   Vehicle,
@@ -17,7 +17,9 @@ export interface ProcessedFuelEntry extends FuelEntry {
 }
 
 export interface FuelStats {
-  totalLitres: number;
+  totalLitres: number; // All litres recorded across all fill-ups
+  totalLitresPumped: number;
+  eligibleLitresConsumed: number; // Litres consumed strictly within valid calculation intervals
   totalSpent: number;
   totalDistanceTracked: number;
   overallAvgKmL: number;
@@ -44,6 +46,8 @@ export function processFuelEntries(entries: FuelEntry[]): {
       processedEntries: [],
       stats: {
         totalLitres: 0,
+        totalLitresPumped: 0,
+        eligibleLitresConsumed: 0,
         totalSpent: 0,
         totalDistanceTracked: 0,
         overallAvgKmL: 0,
@@ -154,6 +158,8 @@ export function processFuelEntries(entries: FuelEntry[]): {
     processedEntries: descending,
     stats: {
       totalLitres: Number(totalAllLitres.toFixed(1)),
+      totalLitresPumped: Number(totalAllLitres.toFixed(1)),
+      eligibleLitresConsumed: Number(totalValidFuel.toFixed(1)),
       totalSpent: Number(totalAllCost.toFixed(2)),
       totalDistanceTracked: totalValidDistance,
       overallAvgKmL,
@@ -410,9 +416,32 @@ export function calculateUnifiedExpenses(
     a.monthKey.localeCompare(b.monthKey)
   );
 
-  // Overall Cost per Km
+  // Current calendar month expenses:
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const currentMonthItem = monthlyMap[currentMonthKey];
+  const currentMonthTotal = currentMonthItem ? Number(currentMonthItem.total.toFixed(2)) : 0;
+  const currentMonthLabel = now.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+
+  // Overall Cost per Km based on distance travelled over the recorded period
+  // We collect odometers from fuel entries, service records, and expenses
+  const allRecordedOdometers: number[] = [
+    ...fuelEntries.map((f) => f.odometer),
+    ...serviceRecords.map((s) => s.odometer),
+    ...expenses.filter((e) => e.odometer !== undefined && e.odometer > 0).map((e) => e.odometer!),
+  ].filter((odo) => typeof odo === 'number' && odo > 0);
+
+  let trackedDistance = 0;
+  if (allRecordedOdometers.length >= 2) {
+    const minOdo = Math.min(...allRecordedOdometers);
+    const maxOdo = Math.max(...allRecordedOdometers);
+    trackedDistance = maxOdo - minOdo;
+  }
+
   let costPerKm = 0;
-  if (vehicle && vehicle.currentOdometer > 0) {
+  if (trackedDistance > 0) {
+    costPerKm = Number((grandTotal / trackedDistance).toFixed(2));
+  } else if (vehicle && vehicle.currentOdometer > 0) {
     costPerKm = Number((grandTotal / vehicle.currentOdometer).toFixed(2));
   }
 
@@ -427,6 +456,9 @@ export function calculateUnifiedExpenses(
     otherTotal: Number(otherTotal.toFixed(2)),
     categoryBreakdown,
     monthlyBreakdown,
+    currentMonthTotal,
+    currentMonthLabel,
+    trackedDistance,
     costPerKm,
   };
 }

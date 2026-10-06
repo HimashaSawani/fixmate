@@ -11,6 +11,7 @@ import {
   insertServiceRecord,
   insertExpense,
   insertMaintenancePlan,
+  getDb,
 } from '../database/db';
 import { Vehicle } from '../types';
 
@@ -58,6 +59,70 @@ export async function exportAllDataToJson(vehicleId?: string): Promise<string> {
   }
 
   return fileUri;
+}
+
+export async function restoreBackupFromJsonString(jsonString: string): Promise<{ success: boolean; count: number }> {
+  const data = JSON.parse(jsonString);
+  if (!data || !data.vehicles || !Array.isArray(data.vehicles)) {
+    throw new Error('Invalid FixMate backup JSON structure.');
+  }
+
+  let count = 0;
+  const db = await getDb();
+
+  // Begin transaction if SQLite is available
+  if (db) {
+    await db.execAsync('BEGIN TRANSACTION;');
+  }
+  try {
+    // 1. Insert Vehicles
+    for (const v of data.vehicles) {
+      await insertVehicle(v);
+      count++;
+    }
+
+    // 2. Insert Fuel Entries
+    if (Array.isArray(data.fuelEntries)) {
+      for (const f of data.fuelEntries) {
+        await insertFuelEntry(f);
+        count++;
+      }
+    }
+
+    // 3. Insert Service Records
+    if (Array.isArray(data.serviceRecords)) {
+      for (const s of data.serviceRecords) {
+        await insertServiceRecord(s);
+        count++;
+      }
+    }
+
+    // 4. Insert Expenses
+    if (Array.isArray(data.expenses)) {
+      for (const e of data.expenses) {
+        await insertExpense(e);
+        count++;
+      }
+    }
+
+    // 5. Insert Maintenance Plans
+    if (Array.isArray(data.maintenancePlans)) {
+      for (const p of data.maintenancePlans) {
+        await insertMaintenancePlan(p);
+        count++;
+      }
+    }
+
+    if (db) {
+      await db.execAsync('COMMIT;');
+    }
+    return { success: true, count };
+  } catch (err) {
+    if (db) {
+      await db.execAsync('ROLLBACK;');
+    }
+    throw err;
+  }
 }
 
 export async function exportVehicleToCsv(vehicle: Vehicle): Promise<string> {
