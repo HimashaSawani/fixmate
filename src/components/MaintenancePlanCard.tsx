@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { MaintenanceStatusResult } from '../services/calculations';
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 
 interface MaintenancePlanCardProps {
   item: MaintenanceStatusResult;
@@ -15,6 +15,7 @@ export const MaintenancePlanCard: React.FC<MaintenancePlanCardProps> = ({
   onLogService,
   onDelete,
 }) => {
+  const { theme, isDark } = useTheme();
   const { plan, status, remainingKm, remainingDays, progressPercent, dueReason, formattedDueDate } = item;
 
   // Status color mapping
