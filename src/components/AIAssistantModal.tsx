@@ -509,7 +509,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
               <View style={styles.bubbleFooter}>
                 {m.sender === 'assistant' && (
                   <Text style={[styles.modeTag, { color: theme.colors.textMuted }]}>
-                    {m.llmProvider === 'openai_gpt4o_mini'
+                    {Boolean(m.llmProvider && m.llmProvider.startsWith('openai'))
                       ? '✨ Cloud LLM'
                       : m.isOffline || m.llmProvider === 'on_device'
                       ? '📱 On-Device'

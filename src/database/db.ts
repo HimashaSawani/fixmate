@@ -862,6 +862,8 @@ export async function getSettings(): Promise<AppSettings> {
       enableNotifications: webSettings.enableNotifications === 'true',
       activeVehicleId: webSettings.activeVehicleId,
       theme: (webSettings.theme as 'dark' | 'light') || 'dark',
+      backendApiKey: webSettings.backendApiKey || '',
+      backendServerUrl: webSettings.backendServerUrl || '',
     };
   }
   const db = await getDb();
@@ -872,6 +874,8 @@ export async function getSettings(): Promise<AppSettings> {
       volumeUnit: 'L',
       enableNotifications: true,
       theme: 'dark',
+      backendApiKey: '',
+      backendServerUrl: '',
     };
   }
   const rows = await db.getAllAsync<{ key: string; value: string }>(
@@ -889,6 +893,8 @@ export async function getSettings(): Promise<AppSettings> {
     enableNotifications: map.enableNotifications === 'true',
     activeVehicleId: map.activeVehicleId,
     theme: (map.theme as 'dark' | 'light') || 'dark',
+    backendApiKey: map.backendApiKey || '',
+    backendServerUrl: map.backendServerUrl || '',
   };
 }
 
@@ -1114,15 +1120,30 @@ export async function restoreAllData(data: BackupRestorePayload): Promise<{ coun
   if (!db) return { count: 0 };
 
   await db.withTransactionAsync(async () => {
-    // 1. Vehicles
+    // 1. Vehicles (ON CONFLICT DO UPDATE preserves child records without triggering ON DELETE CASCADE)
     if (data.vehicles && data.vehicles.length > 0) {
       for (const v of data.vehicles) {
         await db.runAsync(
-          `INSERT OR REPLACE INTO vehicles (
+          `INSERT INTO vehicles (
             id, name, type, make, model, year, regNumber,
             currentOdometer, photoUri, purchaseDate, vin, fuelType, isPrimary,
             createdAt, updatedAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            type = excluded.type,
+            make = excluded.make,
+            model = excluded.model,
+            year = excluded.year,
+            regNumber = excluded.regNumber,
+            currentOdometer = excluded.currentOdometer,
+            photoUri = excluded.photoUri,
+            purchaseDate = excluded.purchaseDate,
+            vin = excluded.vin,
+            fuelType = excluded.fuelType,
+            isPrimary = excluded.isPrimary,
+            createdAt = excluded.createdAt,
+            updatedAt = excluded.updatedAt`,
           [
             v.id,
             v.name,
@@ -1149,10 +1170,22 @@ export async function restoreAllData(data: BackupRestorePayload): Promise<{ coun
     if (data.fuelEntries && data.fuelEntries.length > 0) {
       for (const f of data.fuelEntries) {
         await db.runAsync(
-          `INSERT OR REPLACE INTO fuel_entries (
+          `INSERT INTO fuel_entries (
             id, vehicleId, date, odometer, litres, totalCost,
             pricePerLitre, isFullTank, fuelStation, notes, receiptUri, createdAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            vehicleId = excluded.vehicleId,
+            date = excluded.date,
+            odometer = excluded.odometer,
+            litres = excluded.litres,
+            totalCost = excluded.totalCost,
+            pricePerLitre = excluded.pricePerLitre,
+            isFullTank = excluded.isFullTank,
+            fuelStation = excluded.fuelStation,
+            notes = excluded.notes,
+            receiptUri = excluded.receiptUri,
+            createdAt = excluded.createdAt`,
           [
             f.id,
             f.vehicleId,
@@ -1176,11 +1209,26 @@ export async function restoreAllData(data: BackupRestorePayload): Promise<{ coun
     if (data.serviceRecords && data.serviceRecords.length > 0) {
       for (const s of data.serviceRecords) {
         await db.runAsync(
-          `INSERT OR REPLACE INTO service_records (
+          `INSERT INTO service_records (
             id, vehicleId, planId, title, serviceType, date,
             odometer, garageName, labourCost, partsCost, totalCost,
             notes, receiptUri, partsList, createdAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            vehicleId = excluded.vehicleId,
+            planId = excluded.planId,
+            title = excluded.title,
+            serviceType = excluded.serviceType,
+            date = excluded.date,
+            odometer = excluded.odometer,
+            garageName = excluded.garageName,
+            labourCost = excluded.labourCost,
+            partsCost = excluded.partsCost,
+            totalCost = excluded.totalCost,
+            notes = excluded.notes,
+            receiptUri = excluded.receiptUri,
+            partsList = excluded.partsList,
+            createdAt = excluded.createdAt`,
           [
             s.id,
             s.vehicleId,
@@ -1207,11 +1255,24 @@ export async function restoreAllData(data: BackupRestorePayload): Promise<{ coun
     if (data.expenses && data.expenses.length > 0) {
       for (const e of data.expenses) {
         await db.runAsync(
-          `INSERT OR REPLACE INTO expenses (
+          `INSERT INTO expenses (
             id, vehicleId, category, title, amount, date,
             odometer, vendor, notes, receiptUri, linkedServiceId,
             linkedFuelId, createdAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            vehicleId = excluded.vehicleId,
+            category = excluded.category,
+            title = excluded.title,
+            amount = excluded.amount,
+            date = excluded.date,
+            odometer = excluded.odometer,
+            vendor = excluded.vendor,
+            notes = excluded.notes,
+            receiptUri = excluded.receiptUri,
+            linkedServiceId = excluded.linkedServiceId,
+            linkedFuelId = excluded.linkedFuelId,
+            createdAt = excluded.createdAt`,
           [
             e.id,
             e.vehicleId,
@@ -1236,11 +1297,25 @@ export async function restoreAllData(data: BackupRestorePayload): Promise<{ coun
     if (data.maintenancePlans && data.maintenancePlans.length > 0) {
       for (const p of data.maintenancePlans) {
         await db.runAsync(
-          `INSERT OR REPLACE INTO maintenance_plans (
+          `INSERT INTO maintenance_plans (
             id, vehicleId, title, category, intervalKm, intervalMonths,
             lastServiceMileage, lastServiceDate, nextDueMileage, nextDueDate,
             notes, isCustom, createdAt, updatedAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            vehicleId = excluded.vehicleId,
+            title = excluded.title,
+            category = excluded.category,
+            intervalKm = excluded.intervalKm,
+            intervalMonths = excluded.intervalMonths,
+            lastServiceMileage = excluded.lastServiceMileage,
+            lastServiceDate = excluded.lastServiceDate,
+            nextDueMileage = excluded.nextDueMileage,
+            nextDueDate = excluded.nextDueDate,
+            notes = excluded.notes,
+            isCustom = excluded.isCustom,
+            createdAt = excluded.createdAt,
+            updatedAt = excluded.updatedAt`,
           [
             p.id,
             p.vehicleId,
@@ -1266,9 +1341,16 @@ export async function restoreAllData(data: BackupRestorePayload): Promise<{ coun
     if (data.odometerEntries && data.odometerEntries.length > 0) {
       for (const o of data.odometerEntries) {
         await db.runAsync(
-          `INSERT OR REPLACE INTO odometer_entries (
+          `INSERT INTO odometer_entries (
             id, vehicleId, odometer, date, notes, source, createdAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            vehicleId = excluded.vehicleId,
+            odometer = excluded.odometer,
+            date = excluded.date,
+            notes = excluded.notes,
+            source = excluded.source,
+            createdAt = excluded.createdAt`,
           [
             o.id,
             o.vehicleId,

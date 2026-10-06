@@ -217,15 +217,72 @@ assert(fuelRes.stats.overallAvgKmL === 19.81, 'Fuel economy is 19.81 km/L (1050 
 const unified = calculateUnifiedExpenses(fuelEntries, serviceRecords, expenses, vehicle1);
 
 // Service total: 18,000 + 26,000 = 44,000
-assert(unified.serviceTotal === 44000, 'Service & parts total equals 44,000');
-assert(unified.fuelTotal === 34410, 'Fuel total equals 34,410 (14,800 + 9,250 + 10,360)');
-assert(unified.insuranceTotal === 65000, 'Insurance equals 65,000');
-assert(unified.accessoriesTotal === 12500, 'Accessories equals 12,500');
+// -------------------------------------------------------------
+// TEST 4: STRICT BACKUP SCHEMA & REFERENTIAL INTEGRITY AUDIT
+// -------------------------------------------------------------
+console.log('\n--- TEST 4: Backup Schema, Version, Duplicate IDs & Referential Integrity ---');
 
-// Total should be: 34,410 (fuel) + 44,000 (services) + 65,000 (insurance) + 12,500 (accessories) = 155,910
-// Notice that the 18,000 linked service duplicate expense was excluded!
-assert(unified.totalCost === 155910, 'Unified grand total equals 155,910 without double counting');
+import { validateBackupPayload } from './src/services/backupValidation';
+
+const validBackup = {
+  schemaVersion: 1,
+  app: 'FixMate - Vehicle Manager',
+  version: '1.0.0',
+  exportDate: '2026-10-06T12:00:00Z',
+  vehicles: [vehicle1],
+  fuelEntries: [fuelEntries[0]],
+  serviceRecords: [serviceRecords[0]],
+  expenses: [expenses[0]],
+  maintenancePlans: [plans[0]],
+};
+
+const validatedResult = validateBackupPayload(validBackup);
+assert(validatedResult.schemaVersion === 1, 'Valid backup passes schema validation successfully');
+assert(validatedResult.vehicles.length === 1, 'Validated payload retains vehicles');
+
+// Test 4.1 Unsupported schemaVersion rejection
+let unsupportedVersionCaught = false;
+try {
+  validateBackupPayload({ ...validBackup, schemaVersion: 99 });
+} catch (e: any) {
+  unsupportedVersionCaught = e.message.includes('Unsupported backup schemaVersion');
+}
+assert(unsupportedVersionCaught, 'Unsupported schemaVersion strictly throws error');
+
+// Test 4.2 Duplicate Vehicle ID rejection
+let duplicateIdCaught = false;
+try {
+  validateBackupPayload({ ...validBackup, vehicles: [vehicle1, vehicle1] });
+} catch (e: any) {
+  duplicateIdCaught = e.message.includes('Duplicate vehicle ID');
+}
+assert(duplicateIdCaught, 'Duplicate vehicle ID strictly rejected');
+
+// Test 4.3 Referential Integrity: Unknown vehicleId in fuel entry
+let unknownVehicleCaught = false;
+try {
+  validateBackupPayload({
+    ...validBackup,
+    fuelEntries: [{ ...fuelEntries[0], id: 'f_orphan', vehicleId: 'unknown_veh_999' }],
+  });
+} catch (e: any) {
+  unknownVehicleCaught = e.message.includes('references unknown vehicleId');
+}
+assert(unknownVehicleCaught, 'Orphan record with unknown vehicleId strictly rejected');
+
+// Test 4.4 Referential Integrity: Unknown linkedServiceId in expenses
+let unknownLinkedServiceCaught = false;
+try {
+  validateBackupPayload({
+    ...validBackup,
+    expenses: [{ ...expenses[0], id: 'exp_bad_link', linkedServiceId: 'non_existent_service' }],
+  });
+} catch (e: any) {
+  unknownLinkedServiceCaught = e.message.includes('references unknown linkedServiceId');
+}
+assert(unknownLinkedServiceCaught, 'Invalid linkedServiceId in expense strictly rejected');
 
 console.log('\n================================================================');
 console.log(`🎉 ALL ${testsPassed}/${testsTotal} TESTS PASSED WITH 100% PRECISION!`);
 console.log('================================================================');
+

@@ -125,6 +125,8 @@ export interface AppSettings {
   enableNotifications: boolean;
   activeVehicleId?: string;
   theme: 'dark' | 'light';
+  backendApiKey?: string;
+  backendServerUrl?: string;
 }
 
 export interface FuelCalculationResult {

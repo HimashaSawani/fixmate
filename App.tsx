@@ -47,6 +47,7 @@ import {
 import { scheduleMaintenanceNotification, cancelScheduledMaintenanceNotification } from './src/services/notifications';
 import { evaluateMaintenancePlans } from './src/services/calculations';
 import { runVehicleAutomationForVehicleId } from './src/services/automationEngine';
+import { setOcrBackendApiKey, setOcrBackendUrl } from './src/services/ocrClient';
 import { Header } from './src/components/Header';
 import { DashboardScreen } from './src/screens/DashboardScreen';
 import { FuelLogScreen } from './src/screens/FuelLogScreen';
@@ -200,6 +201,12 @@ function MainApp() {
       }
       const appSettings = await getSettings();
       setSettings(appSettings);
+      if (appSettings.backendApiKey !== undefined) {
+        setOcrBackendApiKey(appSettings.backendApiKey);
+      }
+      if (appSettings.backendServerUrl) {
+        setOcrBackendUrl(appSettings.backendServerUrl);
+      }
 
       const allVehicles = await getAllVehicles();
       setVehicles(allVehicles);
@@ -419,6 +426,14 @@ function MainApp() {
     await saveSetting('volumeUnit', newSettings.volumeUnit);
     await saveSetting('enableNotifications', String(newSettings.enableNotifications));
     await saveSetting('theme', newSettings.theme);
+    if (newSettings.backendApiKey !== undefined) {
+      await saveSetting('backendApiKey', newSettings.backendApiKey);
+      setOcrBackendApiKey(newSettings.backendApiKey);
+    }
+    if (newSettings.backendServerUrl !== undefined) {
+      await saveSetting('backendServerUrl', newSettings.backendServerUrl);
+      setOcrBackendUrl(newSettings.backendServerUrl);
+    }
     setSettings(newSettings);
   };
 

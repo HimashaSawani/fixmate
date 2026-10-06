@@ -21,6 +21,12 @@ from ocr_service import (
     EASYOCR_AVAILABLE,
     PYTESSERACT_AVAILABLE
 )
+from assistant_service import (
+    OPENAI_AVAILABLE,
+    AssistantChatRequest,
+    AssistantChatResponse,
+    process_assistant_chat,
+)
 
 app = FastAPI(
     title="FixMate Vehicle Intelligence Backend",
@@ -189,15 +195,8 @@ async def scan_receipt_base64(
 
 
 # -------------------------------------------------------------
-# 4. Step 5: Read-Only Vehicle Assistant Endpoint
+# 4. Read-Only Vehicle Assistant Endpoint
 # -------------------------------------------------------------
-from assistant_service import (
-    AssistantChatRequest,
-    AssistantChatResponse,
-    process_assistant_chat,
-)
-
-
 @app.post("/assistant/chat", response_model=AssistantChatResponse, tags=["AI Assistant"])
 async def assistant_chat_endpoint(
     payload: AssistantChatRequest,

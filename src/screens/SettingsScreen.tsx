@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
+  TextInput,
+  Modal,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -14,7 +16,7 @@ import { exportAllDataToJson, exportVehicleToCsv } from '../services/backupExpor
 import { sendInstantOdometerAlert } from '../services/notifications';
 import { seedDemoData } from '../database/db';
 import { RestoreModal } from '../components/RestoreModal';
-import { getOcrBackendUrl, setOcrBackendUrl, checkOcrBackendHealth } from '../services/ocrClient';
+import { getOcrBackendUrl, setOcrBackendUrl, getOcrBackendApiKey, setOcrBackendApiKey, checkOcrBackendHealth } from '../services/ocrClient';
 import { useTheme } from '../theme';
 
 interface SettingsScreenProps {
@@ -45,7 +47,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const { theme, isDark, toggleTheme } = useTheme();
   const [notifications, setNotifications] = useState(settings.enableNotifications);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
-  const [serverUrl, setServerUrl] = useState<string>(getOcrBackendUrl());
+  const [showServerModal, setShowServerModal] = useState(false);
+  const [serverUrl, setServerUrl] = useState<string>(settings.backendServerUrl || getOcrBackendUrl());
+  const [apiKey, setApiKey] = useState<string>(settings.backendApiKey || getOcrBackendApiKey());
+  const [tempServerUrl, setTempServerUrl] = useState<string>(serverUrl);
+  const [tempApiKey, setTempApiKey] = useState<string>(apiKey);
 
   const handleToggleNotifications = async (val: boolean) => {
     setNotifications(val);
@@ -480,25 +486,54 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           style={[
             styles.actionRowBtn,
             {
-              borderBottomColor: 'transparent',
+              borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
             },
           ]}
-          onPress={() => {
-            Alert.alert(
-              'Backend Server Host',
-              `Current Host: ${serverUrl}\n\nWhen testing on a physical phone over Wi-Fi, ensure your PC backend is running with:\n"uvicorn main:app --host 0.0.0.0 --port 8000"\nand reachable on your local network.`
-            );
-          }}
+          onPress={() => setShowServerModal(true)}
           activeOpacity={0.7}
         >
           <View style={styles.actionRowLeft}>
             <Ionicons name="server-outline" size={20} color={theme.colors.primary} />
             <View style={{ flex: 1 }}>
               <Text style={[styles.actionRowTitle, { color: theme.colors.textPrimary }]}>
-                Backend Server URL
+                Configure Server & API Key
               </Text>
               <Text style={[styles.actionRowSub, { color: theme.colors.textSecondary }]}>
-                {serverUrl}
+                {serverUrl} {apiKey ? '• Key: ••••••••' : '• No API Key set'}
+              </Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.actionRowBtn,
+            {
+              borderBottomColor: 'transparent',
+            },
+          ]}
+          onPress={async () => {
+            const res = await checkOcrBackendHealth();
+            if (res.isOnline) {
+              Alert.alert(
+                'Backend Online ✅',
+                `Status: Connected\nOCR Engine: ${res.engine || 'Active'}\nAI Provider: ${res.llmProvider || 'Server Rules'}`
+              );
+            } else {
+              Alert.alert('Backend Offline ❌', `Could not reach server: ${res.error || 'Connection refused'}`);
+            }
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.actionRowLeft}>
+            <Ionicons name="pulse-outline" size={20} color="#10B981" />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.actionRowTitle, { color: theme.colors.textPrimary }]}>
+                Test Server Connection
+              </Text>
+              <Text style={[styles.actionRowSub, { color: theme.colors.textSecondary }]}>
+                Check backend reachability and OCR/LLM status
               </Text>
             </View>
           </View>
@@ -544,6 +579,65 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
         </TouchableOpacity>
       </View>
+
+      {/* Server & API Key Modal */}
+      <Modal visible={showServerModal} transparent animationType="fade" onRequestClose={() => setShowServerModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0' }]}>
+            <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>Backend Server & API Key</Text>
+            <Text style={[styles.modalSub, { color: theme.colors.textSecondary }]}>Configure FastAPI companion server host and authentication credentials.</Text>
+
+            <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>SERVER URL</Text>
+            <TextInput
+              style={[styles.modalInput, { color: theme.colors.textPrimary, borderColor: isDark ? 'rgba(255,255,255,0.15)' : '#CBD5E1' }]}
+              value={tempServerUrl}
+              onChangeText={setTempServerUrl}
+              placeholder="http://192.168.1.50:8000"
+              placeholderTextColor={theme.colors.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <Text style={[styles.inputLabel, { color: theme.colors.textSecondary, marginTop: 12 }]}>BACKEND API KEY (X-API-Key)</Text>
+            <TextInput
+              style={[styles.modalInput, { color: theme.colors.textPrimary, borderColor: isDark ? 'rgba(255,255,255,0.15)' : '#CBD5E1' }]}
+              value={tempApiKey}
+              onChangeText={setTempApiKey}
+              placeholder="Enter backend secret API key (optional)"
+              placeholderTextColor={theme.colors.textMuted}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: isDark ? theme.colors.surfaceHighlight : '#F1F5F9' }]} onPress={() => setShowServerModal(false)}>
+                <Text style={[styles.modalBtnText, { color: theme.colors.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: theme.colors.primary }]}
+                onPress={async () => {
+                  const cleanUrl = tempServerUrl.trim() || 'http://localhost:8000';
+                  const cleanKey = tempApiKey.trim();
+                  setServerUrl(cleanUrl);
+                  setApiKey(cleanKey);
+                  setOcrBackendUrl(cleanUrl);
+                  setOcrBackendApiKey(cleanKey);
+                  await onSaveSettings({
+                    ...settings,
+                    backendServerUrl: cleanUrl,
+                    backendApiKey: cleanKey,
+                  });
+                  setShowServerModal(false);
+                  Alert.alert('Saved', 'Server connection settings saved.');
+                }}
+              >
+                <Text style={[styles.modalBtnText, { color: '#0B0F19', fontWeight: '800' }]}>Save Settings</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Restore Backup Modal */}
       <RestoreModal
@@ -693,5 +787,57 @@ const styles = StyleSheet.create({
   actionRowSub: {
     fontSize: 11,
     marginTop: 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  modalSub: {
+    fontSize: 12,
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  inputLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 20,
+  },
+  modalBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  modalBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

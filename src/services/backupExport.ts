@@ -10,19 +10,9 @@ import {
   BackupRestorePayload,
 } from '../database/db';
 import { Vehicle, FuelEntry, ServiceRecord, ExpenseRecord, MaintenancePlan, OdometerEntry } from '../types';
+import { VersionedBackupPayload, validateBackupPayload } from './backupValidation';
 
-export interface VersionedBackupPayload {
-  schemaVersion: number;
-  app: string;
-  version: string;
-  exportDate: string;
-  vehicles: Vehicle[];
-  fuelEntries: (FuelEntry & { receiptBase64?: string })[];
-  serviceRecords: (ServiceRecord & { receiptBase64?: string })[];
-  expenses: (ExpenseRecord & { receiptBase64?: string })[];
-  maintenancePlans: MaintenancePlan[];
-  odometerEntries?: OdometerEntry[];
-}
+export { VersionedBackupPayload, validateBackupPayload };
 
 export async function exportAllDataToJson(vehicleId?: string): Promise<string> {
   const vehicles = await getAllVehicles();
@@ -137,140 +127,6 @@ async function restoreReceiptImage(base64Data?: string, originalUri?: string): P
     console.warn('Failed to restore receipt image:', err);
     return originalUri;
   }
-}
-
-/**
- * Validates version, structure, types, dates, numbers, and relationships of backup JSON.
- */
-export function validateBackupPayload(data: any): VersionedBackupPayload {
-  if (!data || typeof data !== 'object') {
-    throw new Error('Invalid backup file: root must be a JSON object.');
-  }
-
-  if (!Array.isArray(data.vehicles) || data.vehicles.length === 0) {
-    throw new Error('Invalid backup file: "vehicles" array is missing or empty.');
-  }
-
-  const vehicleIds = new Set<string>();
-
-  // Validate vehicles
-  for (let i = 0; i < data.vehicles.length; i++) {
-    const v = data.vehicles[i];
-    if (!v.id || typeof v.id !== 'string') {
-      throw new Error(`Vehicle at index ${i} is missing a valid 'id'.`);
-    }
-    if (!v.name || typeof v.name !== 'string') {
-      throw new Error(`Vehicle '${v.id}' is missing a valid 'name'.`);
-    }
-    if (typeof v.currentOdometer !== 'number' || isNaN(v.currentOdometer) || v.currentOdometer < 0) {
-      throw new Error(`Vehicle '${v.id}' has an invalid 'currentOdometer'.`);
-    }
-    if (v.createdAt && isNaN(new Date(v.createdAt).getTime())) {
-      throw new Error(`Vehicle '${v.id}' has an invalid 'createdAt' date.`);
-    }
-    vehicleIds.add(v.id);
-  }
-
-  // Validate fuel entries & referential integrity
-  if (data.fuelEntries) {
-    if (!Array.isArray(data.fuelEntries)) {
-      throw new Error('Invalid backup file: "fuelEntries" must be an array.');
-    }
-    for (let i = 0; i < data.fuelEntries.length; i++) {
-      const f = data.fuelEntries[i];
-      if (!f.id || typeof f.id !== 'string') {
-        throw new Error(`Fuel entry at index ${i} has an invalid 'id'.`);
-      }
-      if (!f.vehicleId || !vehicleIds.has(f.vehicleId)) {
-        throw new Error(`Fuel entry '${f.id}' references unknown vehicleId '${f.vehicleId}'.`);
-      }
-      if (typeof f.litres !== 'number' || isNaN(f.litres) || f.litres < 0) {
-        throw new Error(`Fuel entry '${f.id}' has an invalid 'litres' quantity.`);
-      }
-      if (typeof f.totalCost !== 'number' || isNaN(f.totalCost) || f.totalCost < 0) {
-        throw new Error(`Fuel entry '${f.id}' has an invalid 'totalCost'.`);
-      }
-      if (f.date && isNaN(new Date(f.date).getTime())) {
-        throw new Error(`Fuel entry '${f.id}' has an invalid 'date'.`);
-      }
-    }
-  }
-
-  // Validate service records & referential integrity
-  if (data.serviceRecords) {
-    if (!Array.isArray(data.serviceRecords)) {
-      throw new Error('Invalid backup file: "serviceRecords" must be an array.');
-    }
-    for (let i = 0; i < data.serviceRecords.length; i++) {
-      const s = data.serviceRecords[i];
-      if (!s.id || typeof s.id !== 'string') {
-        throw new Error(`Service record at index ${i} has an invalid 'id'.`);
-      }
-      if (!s.vehicleId || !vehicleIds.has(s.vehicleId)) {
-        throw new Error(`Service record '${s.id}' references unknown vehicleId '${s.vehicleId}'.`);
-      }
-      if (typeof s.totalCost !== 'number' || isNaN(s.totalCost) || s.totalCost < 0) {
-        throw new Error(`Service record '${s.id}' has an invalid 'totalCost'.`);
-      }
-      if (s.date && isNaN(new Date(s.date).getTime())) {
-        throw new Error(`Service record '${s.id}' has an invalid 'date'.`);
-      }
-    }
-  }
-
-  // Validate expenses & referential integrity
-  if (data.expenses) {
-    if (!Array.isArray(data.expenses)) {
-      throw new Error('Invalid backup file: "expenses" must be an array.');
-    }
-    for (let i = 0; i < data.expenses.length; i++) {
-      const e = data.expenses[i];
-      if (!e.id || typeof e.id !== 'string') {
-        throw new Error(`Expense at index ${i} has an invalid 'id'.`);
-      }
-      if (!e.vehicleId || !vehicleIds.has(e.vehicleId)) {
-        throw new Error(`Expense '${e.id}' references unknown vehicleId '${e.vehicleId}'.`);
-      }
-      if (typeof e.amount !== 'number' || isNaN(e.amount) || e.amount < 0) {
-        throw new Error(`Expense '${e.id}' has an invalid 'amount'.`);
-      }
-      if (e.date && isNaN(new Date(e.date).getTime())) {
-        throw new Error(`Expense '${e.id}' has an invalid 'date'.`);
-      }
-    }
-  }
-
-  // Validate maintenance plans & referential integrity
-  if (data.maintenancePlans) {
-    if (!Array.isArray(data.maintenancePlans)) {
-      throw new Error('Invalid backup file: "maintenancePlans" must be an array.');
-    }
-    for (let i = 0; i < data.maintenancePlans.length; i++) {
-      const p = data.maintenancePlans[i];
-      if (!p.id || typeof p.id !== 'string') {
-        throw new Error(`Maintenance plan at index ${i} has an invalid 'id'.`);
-      }
-      if (!p.vehicleId || !vehicleIds.has(p.vehicleId)) {
-        throw new Error(`Maintenance plan '${p.id}' references unknown vehicleId '${p.vehicleId}'.`);
-      }
-      if (typeof p.intervalKm !== 'number' || isNaN(p.intervalKm) || p.intervalKm < 0) {
-        throw new Error(`Maintenance plan '${p.id}' has an invalid 'intervalKm'.`);
-      }
-    }
-  }
-
-  return {
-    schemaVersion: data.schemaVersion || 1,
-    app: data.app || 'FixMate',
-    version: data.version || '1.0.0',
-    exportDate: data.exportDate || new Date().toISOString(),
-    vehicles: data.vehicles,
-    fuelEntries: data.fuelEntries || [],
-    serviceRecords: data.serviceRecords || [],
-    expenses: data.expenses || [],
-    maintenancePlans: data.maintenancePlans || [],
-    odometerEntries: data.odometerEntries || [],
-  };
 }
 
 export async function restoreBackupFromJsonString(jsonString: string): Promise<{ success: boolean; count: number }> {
