@@ -43,6 +43,25 @@ const quickChips = [
   'Total ownership cost breakdown',
 ];
 
+const renderFormattedText = (text: string, baseStyle: any, isUser: boolean) => {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <Text style={baseStyle}>
+      {parts.map((part, index) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          const content = part.slice(2, -2);
+          return (
+            <Text key={index} style={{ fontWeight: '800', color: isUser ? '#FFFFFF' : '#60A5FA' }}>
+              {content}
+            </Text>
+          );
+        }
+        return part;
+      })}
+    </Text>
+  );
+};
+
 export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
   visible,
   vehicle,
@@ -144,14 +163,11 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                 m.sender === 'user' ? styles.userBubble : styles.aiBubble,
               ]}
             >
-              <Text
-                style={[
-                  styles.messageText,
-                  m.sender === 'user' ? styles.userText : styles.aiText,
-                ]}
-              >
-                {m.text}
-              </Text>
+              {renderFormattedText(
+                m.text,
+                [styles.messageText, m.sender === 'user' ? styles.userText : styles.aiText],
+                m.sender === 'user'
+              )}
 
               {m.suggestedAction && (
                 <TouchableOpacity

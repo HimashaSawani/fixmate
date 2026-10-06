@@ -41,6 +41,7 @@ import {
   updateVehicleOdometer,
 } from './src/database/db';
 import { scheduleMaintenanceNotification } from './src/services/notifications';
+import { evaluateMaintenancePlans } from './src/services/calculations';
 import { Header } from './src/components/Header';
 import { DashboardScreen } from './src/screens/DashboardScreen';
 import { FuelLogScreen } from './src/screens/FuelLogScreen';
@@ -58,7 +59,8 @@ import { AddPlanModal } from './src/components/AddPlanModal';
 import { OdometerUpdateModal } from './src/components/OdometerUpdateModal';
 import { ReceiptModal } from './src/components/ReceiptModal';
 import { AIAssistantModal } from './src/components/AIAssistantModal';
-import { theme } from './src/theme';
+import { NotificationsModal } from './src/components/NotificationsModal';
+import { ThemeProvider, useTheme } from './src/theme';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -87,7 +89,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     if (this.state.hasError) {
       return (
         <SafeAreaView style={styles.splashContainer}>
-          <Ionicons name="alert-circle" size={48} color={theme.colors.danger} />
+          <Ionicons name="alert-circle" size={48} color="#EF4444" />
           <Text style={styles.splashText}>Something went wrong</Text>
           <Text style={[styles.splashSub, { textAlign: 'center', marginHorizontal: 20 }]}>
             {this.state.error?.message || 'An unexpected error occurred.'}
@@ -95,14 +97,14 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
           <TouchableOpacity
             style={{
               marginTop: 20,
-              backgroundColor: theme.colors.primary,
+              backgroundColor: '#2563EB',
               paddingHorizontal: 20,
               paddingVertical: 10,
-              borderRadius: 10,
+              borderRadius: 8,
             }}
             onPress={() => this.setState({ hasError: false, error: null })}
           >
-            <Text style={{ color: '#0B0F19', fontWeight: '700' }}>Retry App</Text>
+            <Text style={{ color: '#FFFFFF', fontWeight: 'bold' }}>Try Again</Text>
           </TouchableOpacity>
         </SafeAreaView>
       );
@@ -111,15 +113,16 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 }
 
-type TabType = 'home' | 'fuel' | 'maintenance' | 'expenses' | 'reports' | 'settings';
+type TabType = 'dashboard' | 'fuel' | 'maintenance' | 'expenses' | 'reports' | 'settings';
 
-export default function App() {
-  const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [currentTab, setCurrentTab] = useState<TabType>('home');
+function MainApp() {
+  const { theme, isDark } = useTheme();
 
-  // State
+  const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [currentTab, setCurrentTab] = useState<TabType>('dashboard');
+
+  // App State
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [activeVehicle, setActiveVehicle] = useState<Vehicle | null>(null);
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
@@ -134,502 +137,581 @@ export default function App() {
     theme: 'dark',
   });
 
-  // Modals state
-  const [showAddVehicle, setShowAddVehicle] = useState(false);
+  // Modal State
+  const [showAddVehicle, setShowAddVehicle] = useState<boolean>(false);
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
-  const [showAddFuel, setShowAddFuel] = useState(false);
-  const [showAddService, setShowAddService] = useState(false);
-  const [selectedPlanIdForService, setSelectedPlanIdForService] = useState<string | undefined>(undefined);
-  const [showAddExpense, setShowAddExpense] = useState(false);
-  const [showAddPlan, setShowAddPlan] = useState(false);
-  const [showOdometerModal, setShowOdometerModal] = useState(false);
-  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showAddFuel, setShowAddFuel] = useState<boolean>(false);
+  const [showAddService, setShowAddService] = useState<boolean>(false);
+  const [selectedPlanIdForService, setSelectedPlanIdForService] = useState<string | undefined>();
+  const [showAddExpense, setShowAddExpense] = useState<boolean>(false);
+  const [showAddPlan, setShowAddPlan] = useState<boolean>(false);
+  const [showOdometerModal, setShowOdometerModal] = useState<boolean>(false);
+  const [showReceiptModal, setShowReceiptModal] = useState<boolean>(false);
   const [selectedReceiptUri, setSelectedReceiptUri] = useState<string | null>(null);
-  const [showAIAssistant, setShowAIAssistant] = useState(false);
+  const [showAIAssistant, setShowAIAssistant] = useState<boolean>(false);
+  const [showNotificationsModal, setShowNotificationsModal] = useState<boolean>(false);
 
-  // Load all data
-  const loadData = useCallback(async () => {
+  // Maintenance notifications badge count
+  const evaluatedAlerts = evaluateMaintenancePlans(plans, activeVehicle?.currentOdometer || 0);
+  const notificationCount = evaluatedAlerts.filter(
+    (e) => e.status === 'overdue' || e.status === 'due_soon'
+  ).length;
+
+  // Load data for active vehicle
+  const loadVehicleData = useCallback(async (vehicleId: string) => {
     try {
-      const vList = await getAllVehicles();
-      const appSettings = await getSettings();
-      setSettings(appSettings);
-      setVehicles(vList);
-
-      let targetVehicle: Vehicle | null = null;
-      if (appSettings.activeVehicleId) {
-        targetVehicle = vList.find((v) => v.id === appSettings.activeVehicleId) || null;
-      }
-      if (!targetVehicle && vList.length > 0) {
-        targetVehicle = vList[0];
-      }
-      setActiveVehicle(targetVehicle);
-
-      if (targetVehicle) {
-        await loadVehicleRecords(targetVehicle.id);
-      }
-    } catch (err: any) {
-      console.error('Error loading data:', err);
-      setErrorMessage(err?.message || 'Failed to load vehicle records');
-    }
-  }, []);
-
-  const loadVehicleRecords = async (vehicleId: string) => {
-    try {
-      const [f, s, e, p] = await Promise.all([
+      const [fuel, services, exps, plns] = await Promise.all([
         getFuelEntries(vehicleId),
         getServiceRecords(vehicleId),
         getExpenses(vehicleId),
         getMaintenancePlans(vehicleId),
       ]);
-      setFuelEntries(f || []);
-      setServiceRecords(s || []);
-      setExpenses(e || []);
-      setPlans(p || []);
-    } catch (err: any) {
-      console.error('Error in loadVehicleRecords:', err);
+      setFuelEntries(fuel);
+      setServiceRecords(services);
+      setExpenses(exps);
+      setPlans(plns);
+    } catch (err) {
+      console.error('Failed to load vehicle data:', err);
     }
-  };
+  }, []);
 
+  // Full Refresh
+  const refreshAll = useCallback(async () => {
+    try {
+      setRefreshing(true);
+      const appSettings = await getSettings();
+      setSettings(appSettings);
+
+      const allVehicles = await getAllVehicles();
+      setVehicles(allVehicles);
+
+      if (allVehicles.length > 0) {
+        const currentId = activeVehicle?.id || allVehicles[0].id;
+        const matched = allVehicles.find((v) => v.id === currentId) || allVehicles[0];
+        setActiveVehicle(matched);
+        await loadVehicleData(matched.id);
+      } else {
+        setActiveVehicle(null);
+        setFuelEntries([]);
+        setServiceRecords([]);
+        setExpenses([]);
+        setPlans([]);
+      }
+    } catch (err) {
+      console.error('Failed to refresh data:', err);
+    } finally {
+      setRefreshing(false);
+      setLoading(false);
+    }
+  }, [activeVehicle?.id, loadVehicleData]);
+
+  // Initial Bootstrap
   useEffect(() => {
-    async function bootstrap() {
+    const bootstrap = async () => {
       try {
         await initDatabase();
-        await loadData();
-      } catch (err: any) {
+        await refreshAll();
+      } catch (err) {
         console.error('Bootstrap error:', err);
-        setErrorMessage(err?.message || 'Initialization failed');
-      } finally {
         setLoading(false);
       }
-    }
+    };
     bootstrap();
-  }, [loadData]);
+  }, []);
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await loadData();
-    setRefreshing(false);
+  // Switch Vehicle
+  const handleSelectVehicle = (vehicle: Vehicle) => {
+    setActiveVehicle(vehicle);
+    loadVehicleData(vehicle.id);
   };
 
-  const handleSelectVehicle = async (v: Vehicle) => {
-    setActiveVehicle(v);
-    await saveSetting('activeVehicleId', v.id);
-    await loadVehicleRecords(v.id);
-  };
-
-  // CRUD Handlers
-  const handleSaveVehicle = async (vehicle: Vehicle) => {
+  // Save/Create Vehicle
+  const handleSaveVehicle = async (vehicleData: Omit<Vehicle, 'id' | 'createdAt' | 'updatedAt'>) => {
     if (editingVehicle) {
-      await updateVehicle(vehicle);
+      const updated: Vehicle = {
+        ...editingVehicle,
+        ...vehicleData,
+        updatedAt: new Date().toISOString(),
+      };
+      await updateVehicle(updated);
+      setEditingVehicle(null);
     } else {
-      await insertVehicle(vehicle);
+      const newVehicle: Vehicle = {
+        id: 'veh_' + Date.now(),
+        ...vehicleData,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await insertVehicle(newVehicle);
+      setActiveVehicle(newVehicle);
     }
-    await loadData();
+    await refreshAll();
   };
 
+  // Delete Vehicle
   const handleDeleteVehicle = async (id: string) => {
     await deleteVehicle(id);
-    await loadData();
+    await refreshAll();
   };
 
-  const handleSaveFuel = async (entry: FuelEntry) => {
-    await insertFuelEntry(entry);
+  // Update Odometer
+  const handleUpdateOdometer = async (newOdometer: number) => {
+    if (!activeVehicle) return;
+    await updateVehicleOdometer(activeVehicle.id, newOdometer);
+    const updated = await getVehicleById(activeVehicle.id);
+    if (updated) {
+      setActiveVehicle(updated);
+    }
+    await refreshAll();
+  };
+
+  // Fuel Handlers
+  const handleSaveFuel = async (fuelData: Omit<FuelEntry, 'id' | 'createdAt'>) => {
+    const newEntry: FuelEntry = {
+      id: 'fuel_' + Date.now(),
+      ...fuelData,
+      createdAt: new Date().toISOString(),
+    };
+    await insertFuelEntry(newEntry);
     if (activeVehicle) {
+      await loadVehicleData(activeVehicle.id);
       const updated = await getVehicleById(activeVehicle.id);
       if (updated) setActiveVehicle(updated);
-      await loadVehicleRecords(activeVehicle.id);
     }
   };
 
   const handleDeleteFuel = async (id: string) => {
     await deleteFuelEntry(id);
-    if (activeVehicle) await loadVehicleRecords(activeVehicle.id);
+    if (activeVehicle) await loadVehicleData(activeVehicle.id);
   };
 
-  const handleSaveService = async (record: ServiceRecord) => {
-    await insertServiceRecord(record);
+  // Service Handlers
+  const handleSaveService = async (serviceData: Omit<ServiceRecord, 'id' | 'createdAt'>) => {
+    const newService: ServiceRecord = {
+      id: 'srv_' + Date.now(),
+      ...serviceData,
+      createdAt: new Date().toISOString(),
+    };
+    await insertServiceRecord(newService);
     if (activeVehicle) {
+      await loadVehicleData(activeVehicle.id);
       const updated = await getVehicleById(activeVehicle.id);
       if (updated) setActiveVehicle(updated);
-      await loadVehicleRecords(activeVehicle.id);
     }
   };
 
   const handleDeleteService = async (id: string) => {
     await deleteServiceRecord(id);
-    if (activeVehicle) await loadVehicleRecords(activeVehicle.id);
+    if (activeVehicle) await loadVehicleData(activeVehicle.id);
   };
 
-  const handleSaveExpense = async (expense: ExpenseRecord) => {
-    await insertExpense(expense);
-    if (activeVehicle) {
-      const updated = await getVehicleById(activeVehicle.id);
-      if (updated) setActiveVehicle(updated);
-      await loadVehicleRecords(activeVehicle.id);
-    }
+  // Expense Handlers
+  const handleSaveExpense = async (expenseData: Omit<ExpenseRecord, 'id' | 'createdAt'>) => {
+    const newExpense: ExpenseRecord = {
+      id: 'exp_' + Date.now(),
+      ...expenseData,
+      createdAt: new Date().toISOString(),
+    };
+    await insertExpense(newExpense);
+    if (activeVehicle) await loadVehicleData(activeVehicle.id);
   };
 
   const handleDeleteExpense = async (id: string) => {
     await deleteExpense(id);
-    if (activeVehicle) await loadVehicleRecords(activeVehicle.id);
+    if (activeVehicle) await loadVehicleData(activeVehicle.id);
   };
 
-  const handleSavePlan = async (plan: MaintenancePlan) => {
-    await insertMaintenancePlan(plan);
-    if (activeVehicle) {
-      await loadVehicleRecords(activeVehicle.id);
-      if (settings.enableNotifications) {
-        scheduleMaintenanceNotification(activeVehicle, plan);
-      }
-    }
+  // Plan Handlers
+  const handleSavePlan = async (planData: Omit<MaintenancePlan, 'id' | 'createdAt'>) => {
+    const newPlan: MaintenancePlan = {
+      id: 'plan_' + Date.now(),
+      ...planData,
+      createdAt: new Date().toISOString(),
+    };
+    await insertMaintenancePlan(newPlan);
+    if (activeVehicle) await loadVehicleData(activeVehicle.id);
   };
 
   const handleDeletePlan = async (id: string) => {
     await deleteMaintenancePlan(id);
-    if (activeVehicle) await loadVehicleRecords(activeVehicle.id);
+    if (activeVehicle) await loadVehicleData(activeVehicle.id);
   };
 
-  const handleUpdateOdometer = async (newOdo: number, notes?: string) => {
-    if (!activeVehicle) return;
-    await updateVehicleOdometer(activeVehicle.id, newOdo, 'manual', notes);
-    const updated = await getVehicleById(activeVehicle.id);
-    if (updated) setActiveVehicle(updated);
-    await loadVehicleRecords(activeVehicle.id);
-  };
-
-  const handleUpdateSetting = async (key: string, val: string) => {
-    await saveSetting(key, val);
-    const newSettings = await getSettings();
+  // Settings Handlers
+  const handleSaveSettings = async (newSettings: AppSettings) => {
+    await saveSetting('currency', newSettings.currency);
+    await saveSetting('distanceUnit', newSettings.distanceUnit);
+    await saveSetting('volumeUnit', newSettings.volumeUnit);
+    await saveSetting('enableNotifications', String(newSettings.enableNotifications));
+    await saveSetting('theme', newSettings.theme);
     setSettings(newSettings);
   };
 
+  // AI Assistant Trigger Action
+  const handleAITriggerAction = (actionType: string) => {
+    setShowAIAssistant(false);
+    if (actionType === 'add_fuel') setShowAddFuel(true);
+    else if (actionType === 'add_service') setShowAddService(true);
+    else if (actionType === 'add_expense') setShowAddExpense(true);
+    else if (actionType === 'update_odo') setShowOdometerModal(true);
+  };
+
+  // Receipt Modal Open
   const handleOpenReceipt = (uri: string) => {
     setSelectedReceiptUri(uri);
     setShowReceiptModal(true);
   };
 
-  const handleAITriggerAction = (action: string) => {
-    if (action === 'add_fuel') setShowAddFuel(true);
-    else if (action === 'add_service') setShowAddService(true);
-    else if (action === 'add_expense') setShowAddExpense(true);
-    else if (action === 'view_reports') setCurrentTab('reports');
-    else if (action === 'view_plans') setCurrentTab('maintenance');
-  };
-
   if (loading) {
     return (
-      <View style={styles.splashContainer}>
+      <SafeAreaView style={[styles.splashContainer, { backgroundColor: theme.colors.background }]}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={styles.splashText}>Starting FixMate...</Text>
-        <Text style={styles.splashSub}>Initializing SQLite Vehicle Database</Text>
-      </View>
+        <Text style={[styles.splashText, { color: theme.colors.textPrimary }]}>FixMate</Text>
+        <Text style={[styles.splashSub, { color: theme.colors.textSecondary }]}>
+          Loading your garage...
+        </Text>
+      </SafeAreaView>
     );
   }
 
   return (
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
+      <StatusBar
+        barStyle={isDark ? 'light-content' : 'dark-content'}
+        backgroundColor={theme.colors.background}
+      />
+
+      {/* Global Header */}
+      <Header
+        activeVehicle={activeVehicle}
+        vehicles={vehicles}
+        notificationCount={notificationCount}
+        onSelectVehicle={handleSelectVehicle}
+        onOpenAddVehicle={() => {
+          setEditingVehicle(null);
+          setShowAddVehicle(true);
+        }}
+        onOpenOdometerModal={() => setShowOdometerModal(true)}
+        onOpenNotifications={() => setShowNotificationsModal(true)}
+        onOpenAIAssistant={() => setShowAIAssistant(true)}
+      />
+
+      {/* Main Screen Views */}
+      <View style={[styles.screenContainer, { backgroundColor: theme.colors.background }]}>
+        {currentTab === 'dashboard' && (
+          <DashboardScreen
+            vehicle={activeVehicle}
+            fuelEntries={fuelEntries}
+            serviceRecords={serviceRecords}
+            expenses={expenses}
+            plans={plans}
+            currency={settings.currency}
+            onRefresh={refreshAll}
+            refreshing={refreshing}
+            onOpenAddFuel={() => setShowAddFuel(true)}
+            onOpenAddService={(planId) => {
+              setSelectedPlanIdForService(planId);
+              setShowAddService(true);
+            }}
+            onOpenAddExpense={() => setShowAddExpense(true)}
+            onOpenOdometerModal={() => setShowOdometerModal(true)}
+            onOpenReceipt={handleOpenReceipt}
+            onNavigateTab={(tab) => {
+              if (tab === 'Fuel') setCurrentTab('fuel');
+              else if (tab === 'Service') setCurrentTab('maintenance');
+              else if (tab === 'Expenses') setCurrentTab('expenses');
+              else if (tab === 'Reports') setCurrentTab('reports');
+              else if (tab === 'More') setCurrentTab('settings');
+            }}
+          />
+        )}
+
+        {currentTab === 'fuel' && (
+          <FuelLogScreen
+            vehicle={activeVehicle}
+            fuelEntries={fuelEntries}
+            currency={settings.currency}
+            onOpenAddFuel={() => setShowAddFuel(true)}
+            onDeleteFuel={handleDeleteFuel}
+            onOpenReceipt={handleOpenReceipt}
+          />
+        )}
+
+        {currentTab === 'maintenance' && (
+          <MaintenanceScreen
+            vehicle={activeVehicle}
+            plans={plans}
+            serviceRecords={serviceRecords}
+            currency={settings.currency}
+            onOpenAddService={(planId) => {
+              setSelectedPlanIdForService(planId);
+              setShowAddService(true);
+            }}
+            onOpenAddPlan={() => setShowAddPlan(true)}
+            onOpenReceipt={handleOpenReceipt}
+            onDeleteService={handleDeleteService}
+            onDeletePlan={handleDeletePlan}
+          />
+        )}
+
+        {currentTab === 'expenses' && (
+          <ExpensesScreen
+            vehicle={activeVehicle}
+            expenses={expenses}
+            fuelEntries={fuelEntries}
+            serviceRecords={serviceRecords}
+            currency={settings.currency}
+            onOpenAddExpense={() => setShowAddExpense(true)}
+            onDeleteExpense={handleDeleteExpense}
+            onOpenReceipt={handleOpenReceipt}
+          />
+        )}
+
+        {currentTab === 'reports' && (
+          <ReportsScreen
+            vehicle={activeVehicle}
+            allVehicles={vehicles}
+            fuelEntries={fuelEntries}
+            serviceRecords={serviceRecords}
+            expenses={expenses}
+            plans={plans}
+            currency={settings.currency}
+          />
+        )}
+
+        {currentTab === 'settings' && (
+          <SettingsScreen
+            settings={settings}
+            vehicles={vehicles}
+            activeVehicle={activeVehicle}
+            onSaveSettings={handleSaveSettings}
+            onOpenAddVehicle={() => {
+              setEditingVehicle(null);
+              setShowAddVehicle(true);
+            }}
+            onEditVehicle={(v) => {
+              setEditingVehicle(v);
+              setShowAddVehicle(true);
+            }}
+            onDeleteVehicle={handleDeleteVehicle}
+            onSelectVehicle={handleSelectVehicle}
+            onRestoreComplete={refreshAll}
+          />
+        )}
+      </View>
+
+      {/* Modern Bottom Navigation Bar with Prominent Floating Action (+) Button */}
+      <View
+        style={[
+          styles.bottomNav,
+          {
+            backgroundColor: isDark ? theme.colors.surface : '#FFFFFF',
+            borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+            shadowColor: isDark ? '#000' : '#64748B',
+          },
+        ]}
+      >
+        {/* 1. Home Tab */}
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => setCurrentTab('dashboard')}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={currentTab === 'dashboard' ? 'home' : 'home-outline'}
+            size={22}
+            color={currentTab === 'dashboard' ? theme.colors.primary : theme.colors.textMuted}
+          />
+          <Text
+            style={[
+              styles.navLabel,
+              { color: currentTab === 'dashboard' ? theme.colors.primary : theme.colors.textMuted },
+              currentTab === 'dashboard' && styles.navLabelActive,
+            ]}
+          >
+            Home
+          </Text>
+        </TouchableOpacity>
+
+        {/* 2. Vehicles / Maintenance Tab */}
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => setCurrentTab('maintenance')}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={currentTab === 'maintenance' ? 'car-sport' : 'car-sport-outline'}
+            size={22}
+            color={currentTab === 'maintenance' ? theme.colors.primary : theme.colors.textMuted}
+          />
+          <Text
+            style={[
+              styles.navLabel,
+              {
+                color:
+                  currentTab === 'maintenance' ? theme.colors.primary : theme.colors.textMuted,
+              },
+              currentTab === 'maintenance' && styles.navLabelActive,
+            ]}
+          >
+            Vehicles
+          </Text>
+        </TouchableOpacity>
+
+        {/* 3. Center Prominent Action (+) Button */}
+        <View style={styles.centerFabContainer}>
+          <TouchableOpacity
+            style={[
+              styles.centerFab,
+              {
+                backgroundColor: theme.colors.primary,
+                shadowColor: theme.colors.primary,
+              },
+            ]}
+            onPress={() => {
+              if (currentTab === 'fuel') setShowAddFuel(true);
+              else if (currentTab === 'maintenance') setShowAddService(true);
+              else if (currentTab === 'expenses') setShowAddExpense(true);
+              else setShowAddFuel(true);
+            }}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="add" size={28} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+
+        {/* 4. Reports Tab */}
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => setCurrentTab('reports')}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={currentTab === 'reports' ? 'bar-chart' : 'bar-chart-outline'}
+            size={22}
+            color={currentTab === 'reports' ? theme.colors.primary : theme.colors.textMuted}
+          />
+          <Text
+            style={[
+              styles.navLabel,
+              { color: currentTab === 'reports' ? theme.colors.primary : theme.colors.textMuted },
+              currentTab === 'reports' && styles.navLabelActive,
+            ]}
+          >
+            Reports
+          </Text>
+        </TouchableOpacity>
+
+        {/* 5. More / Settings Tab */}
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => setCurrentTab('settings')}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={currentTab === 'settings' ? 'ellipsis-horizontal' : 'ellipsis-horizontal-outline'}
+            size={22}
+            color={currentTab === 'settings' ? theme.colors.primary : theme.colors.textMuted}
+          />
+          <Text
+            style={[
+              styles.navLabel,
+              { color: currentTab === 'settings' ? theme.colors.primary : theme.colors.textMuted },
+              currentTab === 'settings' && styles.navLabelActive,
+            ]}
+          >
+            More
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Global Modals */}
+      <AddVehicleModal
+        visible={showAddVehicle}
+        editingVehicle={editingVehicle}
+        onClose={() => setShowAddVehicle(false)}
+        onSave={handleSaveVehicle}
+      />
+
+      <AddFuelModal
+        visible={showAddFuel}
+        vehicle={activeVehicle}
+        currency={settings.currency}
+        onClose={() => setShowAddFuel(false)}
+        onSave={handleSaveFuel}
+      />
+
+      <AddServiceModal
+        visible={showAddService}
+        vehicle={activeVehicle}
+        plans={plans}
+        selectedPlanId={selectedPlanIdForService}
+        currency={settings.currency}
+        onClose={() => setShowAddService(false)}
+        onSave={handleSaveService}
+      />
+
+      <AddExpenseModal
+        visible={showAddExpense}
+        vehicle={activeVehicle}
+        currency={settings.currency}
+        onClose={() => setShowAddExpense(false)}
+        onSave={handleSaveExpense}
+      />
+
+      <AddPlanModal
+        visible={showAddPlan}
+        vehicle={activeVehicle}
+        onClose={() => setShowAddPlan(false)}
+        onSave={handleSavePlan}
+      />
+
+      <OdometerUpdateModal
+        visible={showOdometerModal}
+        vehicle={activeVehicle}
+        onClose={() => setShowOdometerModal(false)}
+        onSave={handleUpdateOdometer}
+      />
+
+      <ReceiptModal
+        visible={showReceiptModal}
+        imageUri={selectedReceiptUri}
+        onClose={() => setShowReceiptModal(false)}
+      />
+
+      <AIAssistantModal
+        visible={showAIAssistant}
+        vehicle={activeVehicle}
+        fuelEntries={fuelEntries}
+        serviceRecords={serviceRecords}
+        expenses={expenses}
+        plans={plans}
+        currency={settings.currency}
+        onClose={() => setShowAIAssistant(false)}
+        onTriggerAction={handleAITriggerAction}
+      />
+
+      <NotificationsModal
+        visible={showNotificationsModal}
+        vehicle={activeVehicle}
+        plans={plans}
+        onClose={() => setShowNotificationsModal(false)}
+        onOpenAddService={(planId) => {
+          setSelectedPlanIdForService(planId);
+          setShowAddService(true);
+        }}
+        onNavigateToMaintenance={() => setCurrentTab('maintenance')}
+      />
+    </SafeAreaView>
+  );
+}
+
+export default function App() {
+  return (
     <ErrorBoundary>
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="light-content" backgroundColor={theme.colors.backgroundSecondary} />
-
-        {/* Global Header with Vehicle Switcher & AI */}
-        <Header
-          activeVehicle={activeVehicle}
-          vehicles={vehicles}
-          onSelectVehicle={handleSelectVehicle}
-          onOpenAddVehicle={() => {
-            setEditingVehicle(null);
-            setShowAddVehicle(true);
-          }}
-          onOpenOdometerModal={() => setShowOdometerModal(true)}
-          onOpenAIAssistant={() => setShowAIAssistant(true)}
-        />
-
-        {/* Screen Views */}
-        <View style={styles.screenContainer}>
-          {currentTab === 'home' && (
-            <DashboardScreen
-              vehicle={activeVehicle}
-              fuelEntries={fuelEntries}
-              serviceRecords={serviceRecords}
-              expenses={expenses}
-              plans={plans}
-              currency={settings.currency}
-              onRefresh={handleRefresh}
-              refreshing={refreshing}
-              onOpenAddFuel={() => setShowAddFuel(true)}
-              onOpenAddService={(planId) => {
-                setSelectedPlanIdForService(planId);
-                setShowAddService(true);
-              }}
-              onOpenAddExpense={() => setShowAddExpense(true)}
-              onOpenOdometerModal={() => setShowOdometerModal(true)}
-              onOpenReceipt={handleOpenReceipt}
-              onNavigateTab={(tab) => setCurrentTab(tab as TabType)}
-            />
-          )}
-
-          {currentTab === 'fuel' && (
-            <FuelLogScreen
-              vehicle={activeVehicle}
-              fuelEntries={fuelEntries}
-              currency={settings.currency}
-              onOpenAddFuel={() => setShowAddFuel(true)}
-              onOpenReceipt={handleOpenReceipt}
-              onDeleteFuel={handleDeleteFuel}
-            />
-          )}
-
-          {currentTab === 'maintenance' && (
-            <MaintenanceScreen
-              vehicle={activeVehicle}
-              plans={plans}
-              serviceRecords={serviceRecords}
-              currency={settings.currency}
-              onOpenAddService={(planId) => {
-                setSelectedPlanIdForService(planId);
-                setShowAddService(true);
-              }}
-              onOpenAddPlan={() => setShowAddPlan(true)}
-              onOpenReceipt={handleOpenReceipt}
-              onDeleteService={handleDeleteService}
-              onDeletePlan={handleDeletePlan}
-            />
-          )}
-
-          {currentTab === 'expenses' && (
-            <ExpensesScreen
-              vehicle={activeVehicle}
-              expenses={expenses}
-              fuelEntries={fuelEntries}
-              serviceRecords={serviceRecords}
-              currency={settings.currency}
-              onOpenAddExpense={() => setShowAddExpense(true)}
-              onOpenReceipt={handleOpenReceipt}
-              onDeleteExpense={handleDeleteExpense}
-            />
-          )}
-
-          {currentTab === 'reports' && (
-            <ReportsScreen
-              vehicle={activeVehicle}
-              allVehicles={vehicles}
-              fuelEntries={fuelEntries}
-              serviceRecords={serviceRecords}
-              expenses={expenses}
-              plans={plans}
-              currency={settings.currency}
-            />
-          )}
-
-          {currentTab === 'settings' && (
-            <SettingsScreen
-              settings={settings}
-              vehicles={vehicles}
-              activeVehicle={activeVehicle}
-              onUpdateSetting={handleUpdateSetting}
-              onOpenAddVehicle={() => {
-                setEditingVehicle(null);
-                setShowAddVehicle(true);
-              }}
-              onEditVehicle={(v) => {
-                setEditingVehicle(v);
-                setShowAddVehicle(true);
-              }}
-              onDeleteVehicle={handleDeleteVehicle}
-              onReloadAllData={handleRefresh}
-            />
-          )}
-        </View>
-
-        {/* Bottom Navigation Tab Bar */}
-        <View style={styles.bottomNav}>
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => setCurrentTab('home')}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={currentTab === 'home' ? 'home' : 'home-outline'}
-              size={22}
-              color={currentTab === 'home' ? theme.colors.primaryLight : theme.colors.textMuted}
-            />
-            <Text
-              style={[
-                styles.navLabel,
-                currentTab === 'home' && { color: theme.colors.primaryLight, fontWeight: '700' },
-              ]}
-            >
-              Home
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => setCurrentTab('fuel')}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={currentTab === 'fuel' ? 'speedometer' : 'speedometer-outline'}
-              size={22}
-              color={currentTab === 'fuel' ? theme.colors.primaryLight : theme.colors.textMuted}
-            />
-            <Text
-              style={[
-                styles.navLabel,
-                currentTab === 'fuel' && { color: theme.colors.primaryLight, fontWeight: '700' },
-              ]}
-            >
-              Fuel
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => setCurrentTab('maintenance')}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={currentTab === 'maintenance' ? 'construct' : 'construct-outline'}
-              size={22}
-              color={currentTab === 'maintenance' ? theme.colors.primaryLight : theme.colors.textMuted}
-            />
-            <Text
-              style={[
-                styles.navLabel,
-                currentTab === 'maintenance' && { color: theme.colors.primaryLight, fontWeight: '700' },
-              ]}
-            >
-              Service
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => setCurrentTab('expenses')}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={currentTab === 'expenses' ? 'wallet' : 'wallet-outline'}
-              size={22}
-              color={currentTab === 'expenses' ? theme.colors.primaryLight : theme.colors.textMuted}
-            />
-            <Text
-              style={[
-                styles.navLabel,
-                currentTab === 'expenses' && { color: theme.colors.primaryLight, fontWeight: '700' },
-              ]}
-            >
-              Expenses
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => setCurrentTab('reports')}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={currentTab === 'reports' ? 'bar-chart' : 'bar-chart-outline'}
-              size={22}
-              color={currentTab === 'reports' ? theme.colors.primaryLight : theme.colors.textMuted}
-            />
-            <Text
-              style={[
-                styles.navLabel,
-                currentTab === 'reports' && { color: theme.colors.primaryLight, fontWeight: '700' },
-              ]}
-            >
-              Reports
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => setCurrentTab('settings')}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={currentTab === 'settings' ? 'settings' : 'settings-outline'}
-              size={22}
-              color={currentTab === 'settings' ? theme.colors.primaryLight : theme.colors.textMuted}
-            />
-            <Text
-              style={[
-                styles.navLabel,
-                currentTab === 'settings' && { color: theme.colors.primaryLight, fontWeight: '700' },
-              ]}
-            >
-              More
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Global Modals */}
-        <AddVehicleModal
-          visible={showAddVehicle}
-          editingVehicle={editingVehicle}
-          onClose={() => setShowAddVehicle(false)}
-          onSave={handleSaveVehicle}
-        />
-
-        <AddFuelModal
-          visible={showAddFuel}
-          vehicle={activeVehicle}
-          currency={settings.currency}
-          onClose={() => setShowAddFuel(false)}
-          onSave={handleSaveFuel}
-        />
-
-        <AddServiceModal
-          visible={showAddService}
-          vehicle={activeVehicle}
-          plans={plans}
-          selectedPlanId={selectedPlanIdForService}
-          currency={settings.currency}
-          onClose={() => setShowAddService(false)}
-          onSave={handleSaveService}
-        />
-
-        <AddExpenseModal
-          visible={showAddExpense}
-          vehicle={activeVehicle}
-          currency={settings.currency}
-          onClose={() => setShowAddExpense(false)}
-          onSave={handleSaveExpense}
-        />
-
-        <AddPlanModal
-          visible={showAddPlan}
-          vehicle={activeVehicle}
-          onClose={() => setShowAddPlan(false)}
-          onSave={handleSavePlan}
-        />
-
-        <OdometerUpdateModal
-          visible={showOdometerModal}
-          vehicle={activeVehicle}
-          onClose={() => setShowOdometerModal(false)}
-          onSave={handleUpdateOdometer}
-        />
-
-        <ReceiptModal
-          visible={showReceiptModal}
-          imageUri={selectedReceiptUri}
-          onClose={() => setShowReceiptModal(false)}
-        />
-
-        <AIAssistantModal
-          visible={showAIAssistant}
-          vehicle={activeVehicle}
-          fuelEntries={fuelEntries}
-          serviceRecords={serviceRecords}
-          expenses={expenses}
-          plans={plans}
-          currency={settings.currency}
-          onClose={() => setShowAIAssistant(false)}
-          onTriggerAction={handleAITriggerAction}
-        />
-      </SafeAreaView>
+      <ThemeProvider>
+        <MainApp />
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }
@@ -637,40 +719,38 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: theme.colors.backgroundSecondary,
   },
   screenContainer: {
     flex: 1,
-    backgroundColor: theme.colors.background,
   },
   splashContainer: {
     flex: 1,
-    backgroundColor: theme.colors.background,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
   splashText: {
-    color: theme.colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 22,
+    fontWeight: '900',
     marginTop: 10,
   },
   splashSub: {
-    color: theme.colors.textSecondary,
-    fontSize: 12,
+    fontSize: 13,
   },
   bottomNav: {
     flexDirection: 'row',
-    backgroundColor: theme.colors.backgroundSecondary,
     borderTopWidth: 1,
-    borderTopColor: theme.colors.cardBorder,
     paddingVertical: 8,
     paddingBottom: 12,
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
+    elevation: 8,
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    alignItems: 'center',
   },
   navItem: {
     flex: 1,
@@ -679,8 +759,27 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   navLabel: {
-    color: theme.colors.textMuted,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
+  },
+  navLabelActive: {
+    fontWeight: '800',
+  },
+  centerFabContainer: {
+    width: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -20,
+  },
+  centerFab: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
   },
 });

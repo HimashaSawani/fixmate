@@ -15,7 +15,7 @@ export const MaintenancePlanCard: React.FC<MaintenancePlanCardProps> = ({
   onLogService,
   onDelete,
 }) => {
-  const { plan, status, remainingKm, remainingDays, progressPercent, formattedDueDate } = item;
+  const { plan, status, remainingKm, remainingDays, progressPercent, dueReason, formattedDueDate } = item;
 
   // Status color mapping
   const statusColor =
@@ -32,13 +32,21 @@ export const MaintenancePlanCard: React.FC<MaintenancePlanCardProps> = ({
       ? 'DUE SOON'
       : 'GOOD';
 
+  const lastServiceDateFormatted = plan.lastServiceDate
+    ? new Date(plan.lastServiceDate).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : 'Not logged';
+
   return (
     <View style={[styles.card, { borderColor: status === 'good' ? theme.colors.cardBorder : `${statusColor}60` }]}>
       <View style={styles.topRow}>
         <View style={styles.titleInfo}>
           <Text style={styles.title}>{plan.title}</Text>
           <Text style={styles.subtitle}>
-            Every {plan.intervalKm.toLocaleString()} km or {plan.intervalMonths} months
+            Interval: Every {plan.intervalKm.toLocaleString()} km or {plan.intervalMonths} months
           </Text>
         </View>
 
@@ -47,37 +55,66 @@ export const MaintenancePlanCard: React.FC<MaintenancePlanCardProps> = ({
         </View>
       </View>
 
-      {/* Progress Track */}
+      {/* Progress Track & Label */}
       <View style={styles.progressSection}>
+        <View style={styles.progressLabelRow}>
+          <Text style={[styles.intervalProgressLabel, { color: theme.colors.textSecondary }]}>
+            Service Interval Progress
+          </Text>
+          <Text style={[styles.progressText, { color: statusColor }]}>{progressPercent}%</Text>
+        </View>
         <View style={styles.track}>
           <View
             style={[
               styles.fill,
               {
-                width: `${Math.min(100, Math.max(5, progressPercent))}%`,
+                width: `${Math.min(100, Math.max(4, progressPercent))}%`,
                 backgroundColor: statusColor,
               },
             ]}
           />
         </View>
-        <Text style={[styles.progressText, { color: statusColor }]}>{progressPercent}%</Text>
       </View>
 
-      {/* Threshold details */}
-      <View style={styles.detailsRow}>
-        <View style={styles.detailItem}>
-          <Ionicons name="speedometer-outline" size={14} color={theme.colors.textSecondary} />
-          <Text style={styles.detailText}>
-            Due at: <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>{plan.nextDueMileage.toLocaleString()} km</Text>
+      {/* Last Service vs Next Due Details */}
+      <View style={styles.matrixContainer}>
+        {/* Last Serviced */}
+        <View style={styles.matrixCol}>
+          <Text style={[styles.matrixHeading, { color: theme.colors.textMuted }]}>LAST SERVICED</Text>
+          <Text style={[styles.matrixVal, { color: theme.colors.textPrimary }]}>
+            {plan.lastServiceMileage.toLocaleString()} km
+          </Text>
+          <Text style={[styles.matrixSub, { color: theme.colors.textSecondary }]}>
+            {lastServiceDateFormatted}
           </Text>
         </View>
 
-        <View style={styles.detailItem}>
-          <Ionicons name="calendar-outline" size={14} color={theme.colors.textSecondary} />
-          <Text style={styles.detailText}>
-            Due by: <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>{formattedDueDate}</Text>
+        <View style={styles.matrixDivider} />
+
+        {/* Next Due */}
+        <View style={styles.matrixCol}>
+          <Text style={[styles.matrixHeading, { color: theme.colors.textMuted }]}>NEXT DUE (TARGET)</Text>
+          <Text style={[styles.matrixVal, { color: theme.colors.textPrimary }]}>
+            {plan.nextDueMileage.toLocaleString()} km
+          </Text>
+          <Text style={[styles.matrixSub, { color: theme.colors.textSecondary }]}>
+            {formattedDueDate}
           </Text>
         </View>
+      </View>
+
+      {/* Whichever Comes First Indicator */}
+      <View style={[styles.triggerBanner, { backgroundColor: isDark ? theme.colors.surfaceHighlight : '#F8FAFC' }]}>
+        <Ionicons
+          name={dueReason === 'date' ? 'calendar-outline' : 'speedometer-outline'}
+          size={14}
+          color={statusColor}
+        />
+        <Text style={[styles.triggerText, { color: theme.colors.textSecondary }]}>
+          {status === 'overdue'
+            ? `Overdue by ${dueReason === 'both' ? 'Mileage & Date' : dueReason === 'date' ? 'Date threshold' : 'Mileage threshold'}`
+            : `Due first by: ${dueReason === 'date' ? `Date (${formattedDueDate})` : `Mileage (${plan.nextDueMileage.toLocaleString()} km)`}`}
+        </Text>
       </View>
 
       {/* Remaining info */}
@@ -153,13 +190,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   progressSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
     marginTop: 12,
   },
+  progressLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  intervalProgressLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
   track: {
-    flex: 1,
     height: 6,
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 3,
@@ -172,25 +215,53 @@ const styles = StyleSheet.create({
   progressText: {
     fontSize: 11,
     fontWeight: '800',
-    width: 38,
-    textAlign: 'right',
   },
-  detailsRow: {
+  matrixContainer: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 10,
-    flexWrap: 'wrap',
-    gap: 8,
+    paddingVertical: 10,
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(150, 150, 150, 0.1)',
   },
-  detailItem: {
+  matrixCol: {
+    flex: 1,
+  },
+  matrixHeading: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  matrixVal: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  matrixSub: {
+    fontSize: 11,
+    marginTop: 1,
+  },
+  matrixDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(150, 150, 150, 0.15)',
+    marginHorizontal: 10,
+  },
+  triggerBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    marginTop: 8,
   },
-  detailText: {
-    color: theme.colors.textSecondary,
+  triggerText: {
     fontSize: 11,
+    fontWeight: '600',
+    flex: 1,
   },
   remainingStrip: {
     backgroundColor: 'rgba(255,255,255,0.03)',

@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ProcessedFuelEntry } from '../services/calculations';
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 
 interface FuelEntryCardProps {
   entry: ProcessedFuelEntry;
@@ -17,6 +17,8 @@ export const FuelEntryCard: React.FC<FuelEntryCardProps> = ({
   onPressReceipt,
   onDelete,
 }) => {
+  const { theme, isDark } = useTheme();
+
   const formattedDate = new Date(entry.date).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -24,21 +26,41 @@ export const FuelEntryCard: React.FC<FuelEntryCardProps> = ({
   });
 
   return (
-    <View style={styles.card}>
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: theme.colors.surface,
+          borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+          shadowColor: isDark ? '#000' : '#64748B',
+        },
+      ]}
+    >
       <View style={styles.topRow}>
         <View style={styles.leftInfo}>
-          <View style={styles.odometerBadge}>
+          <View
+            style={[
+              styles.odometerBadge,
+              {
+                backgroundColor: theme.colors.primaryMuted,
+              },
+            ]}
+          >
             <Ionicons name="speedometer-outline" size={14} color={theme.colors.primary} />
-            <Text style={styles.odometerText}>{entry.odometer.toLocaleString()} km</Text>
+            <Text style={[styles.odometerText, { color: theme.colors.primary }]}>
+              {entry.odometer.toLocaleString()} km
+            </Text>
           </View>
-          <Text style={styles.dateText}>{formattedDate}</Text>
+          <Text style={[styles.dateText, { color: theme.colors.textSecondary }]}>
+            {formattedDate}
+          </Text>
         </View>
 
         <View style={styles.rightInfo}>
-          <Text style={styles.costText}>
+          <Text style={[styles.costText, { color: theme.colors.textPrimary }]}>
             {currency} {entry.totalCost.toLocaleString()}
           </Text>
-          <Text style={styles.litresText}>
+          <Text style={[styles.litresText, { color: theme.colors.textSecondary }]}>
             {entry.litres.toFixed(1)} L @ {currency} {entry.pricePerLitre.toFixed(0)}/L
           </Text>
         </View>
@@ -47,33 +69,66 @@ export const FuelEntryCard: React.FC<FuelEntryCardProps> = ({
       {/* Middle row with Efficiency badge & tags */}
       <View style={styles.middleRow}>
         {entry.isFullTank ? (
-          <View style={styles.fullTankTag}>
-            <Ionicons name="checkmark-circle" size={12} color={theme.colors.secondary} />
-            <Text style={styles.fullTankText}>Full Tank</Text>
+          <View
+            style={[
+              styles.fullTankTag,
+              {
+                backgroundColor: theme.colors.successMuted,
+              },
+            ]}
+          >
+            <Ionicons name="checkmark-circle" size={12} color={theme.colors.success} />
+            <Text style={[styles.fullTankText, { color: theme.colors.success }]}>Full Tank</Text>
           </View>
         ) : (
-          <View style={styles.partialTankTag}>
+          <View
+            style={[
+              styles.partialTankTag,
+              {
+                backgroundColor: theme.colors.warningMuted,
+              },
+            ]}
+          >
             <Ionicons name="water-outline" size={12} color={theme.colors.warning} />
-            <Text style={styles.partialTankText}>Partial Fill</Text>
+            <Text style={[styles.partialTankText, { color: theme.colors.warning }]}>
+              Partial Fill
+            </Text>
           </View>
         )}
 
         {/* Calculated Efficiency */}
         {entry.fuelEfficiencyKmL !== undefined && entry.fuelEfficiencyKmL > 0 ? (
-          <View style={styles.efficiencyBadge}>
-            <Ionicons name="flash" size={12} color="#0B0F19" />
+          <View
+            style={[
+              styles.efficiencyBadge,
+              {
+                backgroundColor: theme.colors.primary,
+              },
+            ]}
+          >
+            <Ionicons name="flash" size={12} color="#FFFFFF" />
             <Text style={styles.efficiencyText}>{entry.fuelEfficiencyKmL} km/L</Text>
           </View>
         ) : (
-          <Text style={styles.partialNote}>
-            {entry.isFullTank ? 'Initial Baseline' : 'Calculates on next full tank'}
+          <Text style={[styles.partialNote, { color: theme.colors.textMuted }]}>
+            {entry.isFullTank ? 'Baseline Fill' : 'Calculates on full tank'}
           </Text>
         )}
 
         {entry.fuelStation && (
-          <View style={styles.stationTag}>
+          <View
+            style={[
+              styles.stationTag,
+              {
+                backgroundColor: isDark ? theme.colors.surfaceHighlight : '#F1F5F9',
+              },
+            ]}
+          >
             <Ionicons name="location-outline" size={12} color={theme.colors.textSecondary} />
-            <Text style={styles.stationText} numberOfLines={1}>
+            <Text
+              style={[styles.stationText, { color: theme.colors.textSecondary }]}
+              numberOfLines={1}
+            >
               {entry.fuelStation}
             </Text>
           </View>
@@ -82,10 +137,17 @@ export const FuelEntryCard: React.FC<FuelEntryCardProps> = ({
 
       {/* Distance & Cost/km details if available */}
       {entry.distanceTravelled && entry.costPerKm && (
-        <View style={styles.statsStrip}>
-          <Text style={styles.statsStripText}>
-            Interval: <Text style={{ color: theme.colors.textPrimary }}>{entry.distanceTravelled} km</Text> • Cost/km:{' '}
-            <Text style={{ color: theme.colors.textPrimary }}>{currency} {entry.costPerKm.toFixed(2)}</Text>
+        <View
+          style={[
+            styles.statsStrip,
+            {
+              backgroundColor: isDark ? theme.colors.surfaceHighlight : '#F8FAFC',
+            },
+          ]}
+        >
+          <Text style={[styles.statsStripText, { color: theme.colors.textSecondary }]}>
+            Interval: <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>{entry.distanceTravelled} km</Text> • Cost/km:{' '}
+            <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>{currency} {entry.costPerKm.toFixed(2)}</Text>
           </Text>
         </View>
       )}
@@ -93,30 +155,41 @@ export const FuelEntryCard: React.FC<FuelEntryCardProps> = ({
       {/* Bottom notes & receipt preview */}
       <View style={styles.bottomRow}>
         {entry.notes ? (
-          <Text style={styles.notesText} numberOfLines={2}>
+          <Text
+            style={[styles.notesText, { color: theme.colors.textSecondary }]}
+            numberOfLines={2}
+          >
             "{entry.notes}"
           </Text>
         ) : (
           <View />
         )}
 
-        <View style={styles.actions}>
-          {entry.receiptUri && (
+        <View style={styles.actionsGroup}>
+          {entry.receiptUri && onPressReceipt && (
             <TouchableOpacity
-              style={styles.receiptButton}
-              onPress={() => onPressReceipt && onPressReceipt(entry.receiptUri!)}
+              style={[
+                styles.receiptBtn,
+                {
+                  backgroundColor: theme.colors.receiptBg,
+                },
+              ]}
+              onPress={() => onPressReceipt(entry.receiptUri!)}
             >
-              <Ionicons name="receipt-outline" size={14} color={theme.colors.primary} />
-              <Text style={styles.receiptButtonText}>Receipt</Text>
+              <Ionicons name="image-outline" size={14} color={theme.colors.receiptIcon} />
+              <Text style={[styles.receiptBtnText, { color: theme.colors.receiptIcon }]}>
+                Receipt
+              </Text>
             </TouchableOpacity>
           )}
 
           {onDelete && (
             <TouchableOpacity
-              style={styles.deleteButton}
+              style={styles.deleteBtn}
               onPress={() => onDelete(entry.id)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="trash-outline" size={14} color={theme.colors.danger} />
+              <Ionicons name="trash-outline" size={15} color={theme.colors.danger} />
             </TouchableOpacity>
           )}
         </View>
@@ -127,17 +200,20 @@ export const FuelEntryCard: React.FC<FuelEntryCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: 18,
+    padding: 16,
     borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
+    marginBottom: 10,
+    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
   },
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    marginBottom: 10,
   },
   leftInfo: {
     gap: 4,
@@ -145,108 +221,97 @@ const styles = StyleSheet.create({
   odometerBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: theme.colors.primaryMuted,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
   odometerText: {
-    color: theme.colors.primaryLight,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   dateText: {
-    color: theme.colors.textSecondary,
     fontSize: 11,
-    marginTop: 2,
+    marginLeft: 2,
   },
   rightInfo: {
     alignItems: 'flex-end',
+    gap: 2,
   },
   costText: {
-    color: theme.colors.textPrimary,
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '800',
   },
   litresText: {
-    color: theme.colors.textSecondary,
-    fontSize: 11,
-    marginTop: 2,
+    fontSize: 12,
   },
   middleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 10,
+    marginVertical: 4,
   },
   fullTankTag: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: theme.colors.secondaryMuted,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
   fullTankText: {
-    color: theme.colors.secondary,
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   partialTankTag: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: theme.colors.warningMuted,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
   partialTankText: {
-    color: theme.colors.warning,
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   efficiencyBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: theme.colors.primary,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
   efficiencyText: {
-    color: '#0B0F19',
-    fontSize: 11,
+    color: '#FFFFFF',
+    fontSize: 12,
     fontWeight: '800',
   },
   partialNote: {
-    color: theme.colors.textMuted,
-    fontSize: 10,
+    fontSize: 11,
     fontStyle: 'italic',
   },
   stationTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
   stationText: {
-    color: theme.colors.textSecondary,
     fontSize: 11,
+    maxWidth: 120,
   },
   statsStrip: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginVertical: 6,
   },
   statsStripText: {
-    color: theme.colors.textSecondary,
     fontSize: 11,
   },
   bottomRow: {
@@ -256,35 +321,32 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.05)',
+    borderTopColor: 'rgba(150, 150, 150, 0.1)',
   },
   notesText: {
-    color: theme.colors.textMuted,
     fontSize: 11,
     fontStyle: 'italic',
     flex: 1,
-    marginRight: 8,
+    marginRight: 10,
   },
-  actions: {
+  actionsGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
-  receiptButton: {
+  receiptBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: theme.colors.surfaceHighlight,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
   },
-  receiptButtonText: {
-    color: theme.colors.primaryLight,
+  receiptBtnText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  deleteButton: {
+  deleteBtn: {
     padding: 4,
   },
 });
