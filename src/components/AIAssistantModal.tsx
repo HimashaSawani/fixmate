@@ -128,11 +128,12 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
             sender: 'assistant',
             text: `Hello! I'm your FixMate Assistant for **${vehicle.name}**.\nAsk me anything about your service history, fuel economy, or tell me to log an expense (e.g. *"I did an oil change today, mileage ${vehicle.currentOdometer.toLocaleString()}, cost 18,000"*).`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isOffline: !backendOnline,
           },
         ]);
       }
     }
-  }, [visible, vehicle?.id, vehicle?.name, vehicle?.currentOdometer]);
+  }, [visible, vehicle?.id, vehicle?.name, vehicle?.currentOdometer, backendOnline]);
 
   const handleClearChat = () => {
     if (!vehicle) return;
@@ -142,6 +143,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
         sender: 'assistant',
         text: `Conversation cleared. How can I help with **${vehicle.name}**?`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isOffline: !backendOnline,
       },
     ]);
   };
@@ -764,7 +766,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'android' ? 24 : 14,
     borderTopWidth: 1,
     gap: 10,
   },

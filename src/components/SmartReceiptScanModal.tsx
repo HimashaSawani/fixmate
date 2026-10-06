@@ -562,7 +562,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '92%',
-    paddingBottom: 24,
+    paddingBottom: Platform.OS === 'android' ? 36 : 24,
   },
   headerRow: {
     flexDirection: 'row',

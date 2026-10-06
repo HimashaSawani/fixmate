@@ -33,7 +33,13 @@ export const MaintenancePlanCard: React.FC<MaintenancePlanCardProps> = ({
       ? 'DUE SOON'
       : 'GOOD';
 
-  const lastServiceDateFormatted = plan.lastServiceDate
+  const hasValidLastDate =
+    Boolean(plan.lastServiceDate) &&
+    typeof plan.lastServiceDate === 'string' &&
+    plan.lastServiceDate.trim() !== '' &&
+    !isNaN(new Date(plan.lastServiceDate).getTime());
+
+  const lastServiceDateFormatted = hasValidLastDate
     ? new Date(plan.lastServiceDate).toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',

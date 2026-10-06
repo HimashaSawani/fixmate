@@ -290,43 +290,6 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({
           ))}
         </View>
       )}
-
-      {/* 5. Maintenance Health Check Summary */}
-      <View
-        style={[
-          styles.maintenanceSummaryCard,
-          {
-            backgroundColor: theme.colors.surface,
-            borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
-          },
-        ]}
-      >
-        <Text style={[styles.sectionHeading, { color: theme.colors.textMuted }]}>
-          MAINTENANCE HEALTH AUDIT
-        </Text>
-        <View style={styles.healthGrid}>
-          <View style={styles.healthItem}>
-            <Text style={[styles.healthVal, { color: theme.colors.success }]}>
-              {evaluatedPlans.filter((p) => p.status === 'good').length}
-            </Text>
-            <Text style={[styles.healthLbl, { color: theme.colors.textSecondary }]}>
-              Good Condition
-            </Text>
-          </View>
-          <View style={styles.healthItem}>
-            <Text style={[styles.healthVal, { color: theme.colors.warning }]}>
-              {evaluatedPlans.filter((p) => p.status === 'due_soon').length}
-            </Text>
-            <Text style={[styles.healthLbl, { color: theme.colors.textSecondary }]}>Due Soon</Text>
-          </View>
-          <View style={styles.healthItem}>
-            <Text style={[styles.healthVal, { color: theme.colors.danger }]}>
-              {evaluatedPlans.filter((p) => p.status === 'overdue').length}
-            </Text>
-            <Text style={[styles.healthLbl, { color: theme.colors.textSecondary }]}>Overdue</Text>
-          </View>
-        </View>
-      </View>
     </ScrollView>
   );
 };

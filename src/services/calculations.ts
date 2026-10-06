@@ -214,10 +214,16 @@ export function evaluateMaintenancePlans(
     // Progress is the higher of the two (since service is due whichever comes first)
     const progressPercent = Math.max(0, Math.round(Math.max(kmProgress, timeProgress)));
 
+    const hasValidDueDate =
+      Boolean(plan.nextDueDate) &&
+      typeof plan.nextDueDate === 'string' &&
+      plan.nextDueDate.trim() !== '' &&
+      !isNaN(dueDate.getTime());
+
     const isMileageOverdue = remainingKm <= 0;
-    const isDateOverdue = remainingDays <= 0;
+    const isDateOverdue = hasValidDueDate && remainingDays <= 0;
     const isMileageDueSoon = remainingKm <= 500 && remainingKm > 0;
-    const isDateDueSoon = remainingDays <= 14 && remainingDays > 0;
+    const isDateDueSoon = hasValidDueDate && remainingDays <= 14 && remainingDays > 0;
 
     let status: 'good' | 'due_soon' | 'overdue' = 'good';
     let dueReason: 'mileage' | 'date' | 'both' = 'mileage';
@@ -236,6 +242,14 @@ export function evaluateMaintenancePlans(
       dueReason = isMileageDueSoon && isDateDueSoon ? 'both' : isMileageDueSoon ? 'mileage' : 'date';
     }
 
+    const formattedDueDate = hasValidDueDate
+      ? dueDate.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        })
+      : 'Not configured';
+
     return {
       plan,
       status,
@@ -243,11 +257,7 @@ export function evaluateMaintenancePlans(
       remainingDays,
       progressPercent,
       dueReason,
-      formattedDueDate: dueDate.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      }),
+      formattedDueDate,
     };
   });
 }
@@ -445,35 +455,12 @@ export function calculateUnifiedExpenses(
   let costPerKm: number | null = null;
 
   if (datedEntries.length >= 2) {
-    const sortedByDate = [...datedEntries].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
-    const minOdo = Math.min(...sortedByDate.map((e) => e.odometer));
-    const maxOdo = Math.max(...sortedByDate.map((e) => e.odometer));
+    const minOdo = Math.min(...datedEntries.map((e) => e.odometer));
+    const maxOdo = Math.max(...datedEntries.map((e) => e.odometer));
     trackedDistance = maxOdo - minOdo;
 
     if (trackedDistance > 0) {
-      const minDate = new Date(sortedByDate[0].date).getTime();
-      const maxDate = new Date(sortedByDate[sortedByDate.length - 1].date).getTime();
-
-      // Total costs that occurred within this tracked period [minDate, maxDate]
-      let periodTotalCost = 0;
-      fuelEntries.forEach((f) => {
-        const t = new Date(f.date).getTime();
-        if (t >= minDate && t <= maxDate) periodTotalCost += f.totalCost;
-      });
-      serviceRecords.forEach((s) => {
-        const t = new Date(s.date).getTime();
-        if (t >= minDate && t <= maxDate) periodTotalCost += s.totalCost;
-      });
-      expenses.forEach((e) => {
-        if (!e.linkedServiceId && !e.linkedFuelId) {
-          const t = new Date(e.date).getTime();
-          if (t >= minDate && t <= maxDate) periodTotalCost += e.amount;
-        }
-      });
-
-      costPerKm = Number((periodTotalCost / trackedDistance).toFixed(2));
+      costPerKm = Number((grandTotal / trackedDistance).toFixed(2));
     }
   }
 
