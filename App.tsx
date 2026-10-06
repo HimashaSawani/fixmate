@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   SafeAreaView,
   StatusBar,
@@ -131,6 +131,13 @@ function MainApp() {
   // App State
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [activeVehicle, setActiveVehicle] = useState<Vehicle | null>(null);
+  const activeVehicleRef = useRef<Vehicle | null>(null);
+
+  // Keep ref in sync
+  useEffect(() => {
+    activeVehicleRef.current = activeVehicle;
+  }, [activeVehicle]);
+
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
   const [serviceRecords, setServiceRecords] = useState<ServiceRecord[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
@@ -185,10 +192,12 @@ function MainApp() {
     }
   }, []);
 
-  // Full Refresh
-  const refreshAll = useCallback(async (targetVehicleId?: string) => {
+  // Full Refresh (silent by default, only shows spinner on manual pull)
+  const refreshAll = useCallback(async (targetVehicleId?: string, isManualPull: boolean = false) => {
     try {
-      setRefreshing(true);
+      if (isManualPull) {
+        setRefreshing(true);
+      }
       const appSettings = await getSettings();
       setSettings(appSettings);
 
@@ -196,11 +205,13 @@ function MainApp() {
       setVehicles(allVehicles);
 
       if (allVehicles.length > 0) {
-        const desiredId = targetVehicleId || activeVehicle?.id || allVehicles[0].id;
-        const matched = allVehicles.find((v) => v.id === desiredId) || allVehicles[0];
+        const currentTargetId = targetVehicleId || activeVehicleRef.current?.id || allVehicles[0].id;
+        const matched = allVehicles.find((v) => v.id === currentTargetId) || allVehicles[0];
+        activeVehicleRef.current = matched;
         setActiveVehicle(matched);
         await loadVehicleData(matched.id);
       } else {
+        activeVehicleRef.current = null;
         setActiveVehicle(null);
         setFuelEntries([]);
         setServiceRecords([]);
@@ -210,10 +221,12 @@ function MainApp() {
     } catch (err) {
       console.error('Failed to refresh data:', err);
     } finally {
-      setRefreshing(false);
+      if (isManualPull) {
+        setRefreshing(false);
+      }
       setLoading(false);
     }
-  }, [activeVehicle?.id, loadVehicleData]);
+  }, [loadVehicleData]);
 
   // Initial Bootstrap
   useEffect(() => {
@@ -227,15 +240,15 @@ function MainApp() {
       }
     };
     bootstrap();
-  }, []);
+  }, [refreshAll]);
 
-  // Foreground Refresh Listener (AppState)
+  // Foreground Refresh Listener (AppState) - Bound once without causing render cycles
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
       if (nextAppState === 'active') {
-        refreshAll();
-        if (activeVehicle?.id) {
-          runVehicleAutomationForVehicleId(activeVehicle.id).catch((e) =>
+        const currId = activeVehicleRef.current?.id;
+        if (currId) {
+          runVehicleAutomationForVehicleId(currId).catch((e) =>
             console.warn('Foreground automation sync failed:', e)
           );
         }
@@ -244,10 +257,11 @@ function MainApp() {
     return () => {
       subscription.remove();
     };
-  }, [refreshAll, activeVehicle?.id]);
+  }, []);
 
   // Switch Vehicle
   const handleSelectVehicle = (vehicle: Vehicle) => {
+    activeVehicleRef.current = vehicle;
     setActiveVehicle(vehicle);
     loadVehicleData(vehicle.id);
     runVehicleAutomationForVehicleId(vehicle.id).catch((e) =>
@@ -467,7 +481,7 @@ function MainApp() {
             expenses={expenses}
             plans={plans}
             currency={settings.currency}
-            onRefresh={refreshAll}
+            onRefresh={() => refreshAll(undefined, true)}
             refreshing={refreshing}
             onOpenAddFuel={() => setShowAddFuel(true)}
             onOpenAddService={(planId) => {
@@ -829,14 +843,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderTopWidth: 1,
     paddingVertical: 8,
-    paddingBottom: 12,
+    paddingBottom: 14,
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    elevation: 8,
+    zIndex: 999,
+    elevation: 16,
     shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.12,
     shadowRadius: 8,
     alignItems: 'center',
   },
@@ -844,6 +859,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 48,
     gap: 3,
   },
   navLabel: {
@@ -857,15 +873,17 @@ const styles = StyleSheet.create({
     width: 60,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -20,
+    marginTop: -24,
+    zIndex: 1000,
+    elevation: 20,
   },
   centerFab: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 6,
+    elevation: 8,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 8,
