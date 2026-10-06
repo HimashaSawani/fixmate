@@ -10,6 +10,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.fixmate.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -24,7 +25,15 @@
     "plugins": [
       "expo-sqlite",
       "expo-sharing",
-      "expo-font"
+      "expo-font",
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "FixMate needs access to your photos to attach fuel and service receipt images.",
+          "cameraPermission": "FixMate needs access to your camera to scan receipt photos."
+        }
+      ]
     ]
   }
 }

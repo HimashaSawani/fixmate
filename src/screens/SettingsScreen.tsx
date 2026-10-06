@@ -14,6 +14,7 @@ import { exportAllDataToJson, exportVehicleToCsv } from '../services/backupExpor
 import { sendInstantOdometerAlert } from '../services/notifications';
 import { seedDemoData } from '../database/db';
 import { RestoreModal } from '../components/RestoreModal';
+import { getOcrBackendUrl, setOcrBackendUrl, checkOcrBackendHealth } from '../services/ocrClient';
 import { useTheme } from '../theme';
 
 interface SettingsScreenProps {
@@ -44,6 +45,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const { theme, isDark, toggleTheme } = useTheme();
   const [notifications, setNotifications] = useState(settings.enableNotifications);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [serverUrl, setServerUrl] = useState<string>(getOcrBackendUrl());
 
   const handleToggleNotifications = async (val: boolean) => {
     setNotifications(val);
@@ -460,7 +462,51 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         )}
       </View>
 
-      {/* 6. Developer & Demo Tools */}
+      {/* 6. AI & OCR Server Connection */}
+      <View
+        style={[
+          styles.sectionCard,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+          },
+        ]}
+      >
+        <Text style={[styles.sectionTitle, { color: theme.colors.primary }]}>
+          AI & OCR SERVER CONNECTION
+        </Text>
+
+        <TouchableOpacity
+          style={[
+            styles.actionRowBtn,
+            {
+              borderBottomColor: 'transparent',
+            },
+          ]}
+          onPress={() => {
+            Alert.alert(
+              'Backend Server Host',
+              `Current Host: ${serverUrl}\n\nWhen testing on a physical phone over Wi-Fi, ensure your PC backend is running with:\n"uvicorn main:app --host 0.0.0.0 --port 8000"\nand reachable on your local network.`
+            );
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.actionRowLeft}>
+            <Ionicons name="server-outline" size={20} color={theme.colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.actionRowTitle, { color: theme.colors.textPrimary }]}>
+                Backend Server URL
+              </Text>
+              <Text style={[styles.actionRowSub, { color: theme.colors.textSecondary }]}>
+                {serverUrl}
+              </Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
+        </TouchableOpacity>
+      </View>
+
+      {/* 7. Developer & Demo Tools */}
       <View
         style={[
           styles.sectionCard,
