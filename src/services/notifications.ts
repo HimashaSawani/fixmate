@@ -1,4 +1,5 @@
 import { MaintenancePlan, Vehicle } from '../types';
+import { isRunningInExpoGo } from 'expo';
 
 let NotificationsModule: any = null;
 let PlatformModule: any = null;
@@ -13,10 +14,33 @@ function getPlatform(): any {
   }
 }
 
+function isExpoGo(): boolean {
+  try {
+    if (typeof isRunningInExpoGo === 'function') {
+      return isRunningInExpoGo();
+    }
+  } catch {
+    // fallback
+  }
+  return false;
+}
+
 function getNotificationsModule(): any | null {
+  const Platform = getPlatform();
+  if (Platform.OS === 'web') {
+    return null;
+  }
+
+  // In Expo Go on Android (SDK 53+), expo-notifications throws a fatal error on import
+  // because remote push functionality was removed from Expo Go.
+  // Standalone APK builds (preview/production) will execute notifications natively.
+  if (Platform.OS === 'android' && isExpoGo()) {
+    return null;
+  }
+
   if (NotificationsModule) return NotificationsModule;
   try {
-    // Dynamically load to avoid static initialization error in Expo Go SDK 53+
+    // Dynamically load to avoid static initialization error in Expo Go
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = require('expo-notifications');
     NotificationsModule = mod;
@@ -36,8 +60,8 @@ function getNotificationsModule(): any | null {
     }
     return NotificationsModule;
   } catch (err) {
-    // In Expo Go on Android SDK 53+, expo-notifications remote push is disabled
-    console.log('expo-notifications skipped in Expo Go environment');
+    // In Expo Go or unsupported environments, gracefully fall back
+    console.log('expo-notifications skipped in current environment');
     return null;
   }
 }

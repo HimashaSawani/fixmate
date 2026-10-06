@@ -115,19 +115,24 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
     }
   }, [visible]);
 
-  // Initial greeting
+  // Initial greeting or vehicle change
+  const currentVehicleIdRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (visible && vehicle && messages.length === 0) {
-      setMessages([
-        {
-          id: 'welcome',
-          sender: 'assistant',
-          text: `Hello! I'm your FixMate Assistant for **${vehicle.name}**.\nAsk me anything about your service history, fuel economy, or tell me to log an expense (e.g. *"I did an oil change today, mileage 45,000, cost 18,000"*).`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        },
-      ]);
+    if (visible && vehicle) {
+      if (currentVehicleIdRef.current !== vehicle.id || messages.length === 0) {
+        currentVehicleIdRef.current = vehicle.id;
+        setMessages([
+          {
+            id: `welcome_${vehicle.id}_${Date.now()}`,
+            sender: 'assistant',
+            text: `Hello! I'm your FixMate Assistant for **${vehicle.name}**.\nAsk me anything about your service history, fuel economy, or tell me to log an expense (e.g. *"I did an oil change today, mileage ${vehicle.currentOdometer.toLocaleString()}, cost 18,000"*).`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
+        ]);
+      }
     }
-  }, [visible, vehicle, messages.length]);
+  }, [visible, vehicle?.id, vehicle?.name, vehicle?.currentOdometer]);
 
   const handleClearChat = () => {
     if (!vehicle) return;

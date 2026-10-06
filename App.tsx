@@ -186,7 +186,7 @@ function MainApp() {
   }, []);
 
   // Full Refresh
-  const refreshAll = useCallback(async () => {
+  const refreshAll = useCallback(async (targetVehicleId?: string) => {
     try {
       setRefreshing(true);
       const appSettings = await getSettings();
@@ -196,8 +196,8 @@ function MainApp() {
       setVehicles(allVehicles);
 
       if (allVehicles.length > 0) {
-        const currentId = activeVehicle?.id || allVehicles[0].id;
-        const matched = allVehicles.find((v) => v.id === currentId) || allVehicles[0];
+        const desiredId = targetVehicleId || activeVehicle?.id || allVehicles[0].id;
+        const matched = allVehicles.find((v) => v.id === desiredId) || allVehicles[0];
         setActiveVehicle(matched);
         await loadVehicleData(matched.id);
       } else {
@@ -275,10 +275,9 @@ function MainApp() {
         updatedAt: new Date().toISOString(),
       };
       await insertVehicle(newVehicle);
-      setActiveVehicle(newVehicle);
       targetVehicleId = newVehicle.id;
     }
-    await refreshAll();
+    await refreshAll(targetVehicleId);
     await runVehicleAutomationForVehicleId(targetVehicleId).catch(console.warn);
   };
 

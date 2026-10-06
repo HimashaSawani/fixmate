@@ -235,6 +235,39 @@ const updatedEvaluation = evaluateMaintenancePlans([updatedPlan], 45000);
 assert(updatedEvaluation[0].status === 'good', 'Maintenance plan instantly refreshed to "good" status with 5,000 km remaining');
 assert(updatedEvaluation[0].remainingKm === 5000, 'Remaining distance correctly recalculated to 5,000 km');
 
+// ----------------- TEST 6: Multi-Vehicle Addition & Independent Automation -----------------
+console.log('\n--- TEST 6: Multi-Vehicle Creation & Independent Automation ---');
+
+const newlyAddedVehicle: Vehicle = {
+  id: 'veh_pulsar_03',
+  name: 'Commuter Bike (Pulsar)',
+  type: 'motorcycle',
+  make: 'Bajaj',
+  model: 'Pulsar 150',
+  year: 2023,
+  currentOdometer: 12500,
+  fuelType: 'petrol',
+  isPrimary: false,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
+// Evaluate vehicle 1 and newly added vehicle independently
+const v1Eval = evaluateMaintenancePlans([oilPlan], vehicle1.currentOdometer);
+const v3OilPlan: MaintenancePlan = {
+  ...oilPlan,
+  id: 'plan_pulsar_oil',
+  vehicleId: newlyAddedVehicle.id,
+  lastServiceMileage: 10000,
+  nextDueMileage: 13000,
+  nextDueDate: new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString(),
+};
+const v3Eval = evaluateMaintenancePlans([v3OilPlan], newlyAddedVehicle.currentOdometer);
+
+assert(v1Eval.length === 1 && v3Eval.length === 1, 'Both vehicle maintenance profiles evaluated independently');
+assert(v3Eval[0].remainingKm === 500, 'Newly added vehicle odometer delta accurately computed (500 km remaining)');
+assert(v3Eval[0].status === 'due_soon', 'Newly added vehicle alerts triggered according to its specific odometer');
+
 console.log('\n================================================================');
 console.log(`🎉 ALL ${passedTests}/${totalTests} AUDIT TESTS PASSED WITH 100% PRECISION!`);
 console.log('================================================================\n');

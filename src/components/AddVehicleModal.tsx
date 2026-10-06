@@ -117,8 +117,9 @@ export const AddVehicleModal: React.FC<AddVehicleModalProps> = ({
 
       await onSave(payload);
       onClose();
-    } catch (err) {
-      Alert.alert('Error', 'Failed to save vehicle.');
+    } catch (err: any) {
+      console.error('Failed to save vehicle:', err);
+      Alert.alert('Error', err?.message || 'Failed to save vehicle.');
     } finally {
       setLoading(false);
     }
