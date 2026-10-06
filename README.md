@@ -10,72 +10,72 @@
 
 ---
 
-## 📸 Application Screenshots
+## 📱 Key Features & Visual Walkthrough
+
+### 1. 📊 Central Vehicle Dashboard & Garage Management
+A modern, unified vehicle health dashboard displaying real-time vehicle status, active odometer readings, monthly expenditure summaries, quick-action shortcuts, and recent transaction history.
 
 <p align="center">
-  <img src="./assets/screenshots/01_dashboard.jpg" width="19%" alt="Dashboard" />
-  <img src="./assets/screenshots/02_ai_copilot.jpg" width="19%" alt="FixMate Copilot" />
-  <img src="./assets/screenshots/03_receipt_ocr.jpg" width="19%" alt="Smart Receipt OCR" />
-  <img src="./assets/screenshots/04_maintenance_plans.jpg" width="19%" alt="Maintenance Plans" />
-  <img src="./assets/screenshots/05_reports_analytics.jpg" width="19%" alt="Reports & Analytics" />
+  <img src="./assets/screenshots/01_dashboard.jpg" width="320" alt="Central Dashboard" />
 </p>
 
-| 1. Dashboard | 2. AI Copilot | 3. Smart Receipt OCR | 4. Maintenance Plans | 5. Financial Analytics |
-|:---:|:---:|:---:|:---:|:---:|
-| Vehicle status, health metrics & recent activity | Natural language queries & draft creation | Automated receipt camera/gallery scanner | Interval schedules & explainable forecasts | Expense category breakdown & fuel trends |
+- **Multi-Vehicle Garage**: Manage cars, SUVs, motorcycles, vans, and trucks with completely isolated service schedules.
+- **Quick Logging**: One-tap access to log fuel fill-ups, maintenance services, expenses, and receipt scans.
+- **Upcoming Maintenance Widgets**: Real-time status cards highlighting urgent, due-soon, and healthy service items.
 
 ---
 
-## 🏗️ Architecture & Data Flow
+### 2. 🤖 Conversational AI Copilot (OpenAI + SQLite Tool Bridge)
+An intelligent, privacy-conscious AI assistant that answers questions about service history and fuel economy, and generates pre-filled draft records with human-in-the-loop review.
 
-```mermaid
-graph TD
-    subgraph Mobile Client [📱 React Native / Expo Mobile App]
-        UI[UI Screens & Modals<br/>Dashboard, Fuel, Maintenance, Expenses, Settings]
-        AE[⚙️ Automation Engine<br/>Rate calculation, driving forecast, status evaluation]
-        SQL[(🗄️ Local SQLite DB<br/>Vehicles, Fuel, Service, Expenses, Plans, Idempotency)]
-        NOTIF[🔔 Local Notification Service<br/>Scheduled channel alerts & instant odometer threshold]
-        OCR_CLIENT[🌐 OCR & AI Client Service<br/>HTTP REST client with timeout & offline fallbacks]
-    end
+<p align="center">
+  <img src="./assets/screenshots/02_ai_copilot.jpg" width="320" alt="FixMate Copilot" />
+</p>
 
-    subgraph Backend [🖥️ FastAPI AI & OCR Backend]
-        API[FastAPI Server :8000]
-        TESS[🖼️ Tesseract OCR Pipeline<br/>OpenCV pre-processing, regex currency & merchant extraction]
-        LLM[✨ OpenAI Assistant Service<br/>GPT-4o mini, two-turn function calling & draft generation]
-    end
-
-    UI -->|Read/Write Records| SQL
-    UI -->|Evaluate Automation| AE
-    AE -->|Check thresholds| NOTIF
-    AE -->|Query data| SQL
-    UI -->|Scan Receipt / Ask Copilot| OCR_CLIENT
-    OCR_CLIENT -->|POST /api/ocr/scan & /api/assistant/chat| API
-    API --> TESS
-    API --> LLM
-    OCR_CLIENT -.->|Offline fallback| UI
-```
+- **Natural Language Parsing**: Ask queries like *"When is my next oil change?"* or command *"I did an oil change today, mileage 45,000, cost 18,000"*.
+- **Human-in-the-Loop Review**: Draft actions require explicit confirmation before writing to SQLite.
+- **Transactional Idempotency**: Unique draft IDs and persistent SQLite idempotency keys strictly prevent duplicate saves across app restarts.
+- **Deterministic Offline Fallback**: Operates cleanly on local rule heuristics when the backend is offline.
 
 ---
 
-## ✨ Core Features
+### 3. 🧾 Smart Receipt OCR Scanner (FastAPI + OpenCV + Tesseract)
+Capture paper fuel and garage invoices via camera or gallery to automatically extract metadata into structured records.
 
-1. **Multi-Vehicle Garage Management**:
-   - Manage cars, SUVs, motorcycles, vans, and trucks.
-   - Independent service schedules, fuel histories, and odometer tracking per vehicle.
-2. **Unified Financial Tracking**:
-   - Double-counting prevention: fuel costs tracked via fuel logs, services via service records, and standalone expenses isolated.
-   - Monthly and categorical expenditure breakdown with visual charts.
-3. **Automated Maintenance Schedules & Forecasting**:
-   - *"Whichever comes first"* rule (elapsed mileage vs. calendar time).
-   - Explainable driving rate forecasting ($\Delta\text{km} / \Delta\text{days}$) based on recorded odometer intervals.
-4. **Smart Receipt OCR**:
-   - Camera/gallery receipt scanning with OpenCV grayscale, adaptive thresholding, and deterministic metadata extraction (merchant, date, total, odometer).
-5. **Conversational AI Copilot (OpenAI / Local Fallback)**:
-   - Natural language queries (*"When is my next oil change?"*, *"What was my fuel spend last month?"*).
-   - Automatic draft action creation with human-in-the-loop review and transactional SQLite deduplication.
-6. **Data Portability**:
-   - Full JSON backup export & restore with relational ID preservation.
-   - CSV export for spreadsheet analysis.
+<p align="center">
+  <img src="./assets/screenshots/03_receipt_ocr.jpg" width="320" alt="Smart Receipt OCR" />
+</p>
+
+- **Automated Metadata Extraction**: Extracts merchant name, transaction date, total amount, and odometer readings.
+- **Adaptive Image Preprocessing**: Grayscale filtering and thresholding optimize extraction accuracy even in challenging lighting.
+- **Manual Verification Dialog**: Editable verification modal guarantees zero hallucinated fields enter your records.
+
+---
+
+### 4. 🔧 Preventive Maintenance Schedules & Explainable Forecasting
+Intelligent maintenance tracking with automatic scheduling, explainable driving forecasts, and native notification alerts.
+
+<p align="center">
+  <img src="./assets/screenshots/04_maintenance_plans.jpg" width="320" alt="Maintenance Schedules" />
+</p>
+
+- **"Whichever Comes First" Rule**: Evaluates maintenance due status based on distance intervals (km) or calendar intervals (months).
+- **Explainable Driving Forecasts**: Computes historical daily driving rate ($\Delta\text{km} / \Delta\text{days}$) to forecast estimated service dates with transparent explanations.
+- **Local Notification Alerts**: Native scheduled reminders delivered directly via Android notification channels.
+
+---
+
+### 5. 📈 Financial Analytics & Cost Reporting
+Deep financial insights into total vehicle ownership costs with strict double-counting prevention.
+
+<p align="center">
+  <img src="./assets/screenshots/05_reports_analytics.jpg" width="320" alt="Financial Analytics & Reports" />
+</p>
+
+- **Strict Financial Isolation**: Separates fuel logs, service invoices, and standalone expenses to prevent double-counting.
+- **Visual Expenditure Trends**: Monthly cost bar charts and categorical expense distribution breakdowns.
+- **Cost per Kilometer Metric**: Accurate ownership cost per km calculated across recorded odometer intervals.
+- **Data Portability**: Full JSON backup export & restore with relational ID preservation + CSV export.
 
 ---
 
