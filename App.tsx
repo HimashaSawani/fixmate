@@ -7,6 +7,8 @@ import {
   Text,
   TouchableOpacity,
   ActivityIndicator,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -15,6 +17,7 @@ import {
   ServiceRecord,
   ExpenseRecord,
   MaintenancePlan,
+  OdometerEntry,
   AppSettings,
 } from './src/types';
 import {
@@ -39,9 +42,11 @@ import {
   insertMaintenancePlan,
   deleteMaintenancePlan,
   updateVehicleOdometer,
+  getOdometerEntries,
 } from './src/database/db';
-import { scheduleMaintenanceNotification } from './src/services/notifications';
+import { scheduleMaintenanceNotification, cancelScheduledMaintenanceNotification } from './src/services/notifications';
 import { evaluateMaintenancePlans } from './src/services/calculations';
+import { runVehicleAutomationForVehicleId } from './src/services/automationEngine';
 import { Header } from './src/components/Header';
 import { DashboardScreen } from './src/screens/DashboardScreen';
 import { FuelLogScreen } from './src/screens/FuelLogScreen';
@@ -58,6 +63,7 @@ import { AddExpenseModal } from './src/components/AddExpenseModal';
 import { AddPlanModal } from './src/components/AddPlanModal';
 import { OdometerUpdateModal } from './src/components/OdometerUpdateModal';
 import { ReceiptModal } from './src/components/ReceiptModal';
+import { SmartReceiptScanModal } from './src/components/SmartReceiptScanModal';
 import { AIAssistantModal } from './src/components/AIAssistantModal';
 import { NotificationsModal } from './src/components/NotificationsModal';
 import { ThemeProvider, useTheme } from './src/theme';
@@ -129,6 +135,7 @@ function MainApp() {
   const [serviceRecords, setServiceRecords] = useState<ServiceRecord[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [plans, setPlans] = useState<MaintenancePlan[]>([]);
+  const [odometerEntries, setOdometerEntries] = useState<OdometerEntry[]>([]);
   const [settings, setSettings] = useState<AppSettings>({
     currency: 'LKR',
     distanceUnit: 'km',
@@ -150,6 +157,7 @@ function MainApp() {
   const [selectedReceiptUri, setSelectedReceiptUri] = useState<string | null>(null);
   const [showAIAssistant, setShowAIAssistant] = useState<boolean>(false);
   const [showNotificationsModal, setShowNotificationsModal] = useState<boolean>(false);
+  const [showScanReceiptModal, setShowScanReceiptModal] = useState<boolean>(false);
 
   // Maintenance notifications badge count
   const evaluatedAlerts = evaluateMaintenancePlans(plans, activeVehicle?.currentOdometer || 0);
@@ -160,16 +168,18 @@ function MainApp() {
   // Load data for active vehicle
   const loadVehicleData = useCallback(async (vehicleId: string) => {
     try {
-      const [fuel, services, exps, plns] = await Promise.all([
+      const [fuel, services, exps, plns, odos] = await Promise.all([
         getFuelEntries(vehicleId),
         getServiceRecords(vehicleId),
         getExpenses(vehicleId),
         getMaintenancePlans(vehicleId),
+        getOdometerEntries(vehicleId),
       ]);
       setFuelEntries(fuel);
       setServiceRecords(services);
       setExpenses(exps);
       setPlans(plns);
+      setOdometerEntries(odos);
     } catch (err) {
       console.error('Failed to load vehicle data:', err);
     }
@@ -219,14 +229,35 @@ function MainApp() {
     bootstrap();
   }, []);
 
+  // Foreground Refresh Listener (AppState)
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        refreshAll();
+        if (activeVehicle?.id) {
+          runVehicleAutomationForVehicleId(activeVehicle.id).catch((e) =>
+            console.warn('Foreground automation sync failed:', e)
+          );
+        }
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [refreshAll, activeVehicle?.id]);
+
   // Switch Vehicle
   const handleSelectVehicle = (vehicle: Vehicle) => {
     setActiveVehicle(vehicle);
     loadVehicleData(vehicle.id);
+    runVehicleAutomationForVehicleId(vehicle.id).catch((e) =>
+      console.warn('Automation evaluation failed:', e)
+    );
   };
 
   // Save/Create Vehicle
   const handleSaveVehicle = async (vehicleData: Omit<Vehicle, 'id' | 'createdAt' | 'updatedAt'>) => {
+    let targetVehicleId: string;
     if (editingVehicle) {
       const updated: Vehicle = {
         ...editingVehicle,
@@ -235,6 +266,7 @@ function MainApp() {
       };
       await updateVehicle(updated);
       setEditingVehicle(null);
+      targetVehicleId = updated.id;
     } else {
       const newVehicle: Vehicle = {
         id: 'veh_' + Date.now(),
@@ -244,8 +276,10 @@ function MainApp() {
       };
       await insertVehicle(newVehicle);
       setActiveVehicle(newVehicle);
+      targetVehicleId = newVehicle.id;
     }
     await refreshAll();
+    await runVehicleAutomationForVehicleId(targetVehicleId).catch(console.warn);
   };
 
   // Delete Vehicle
@@ -263,57 +297,78 @@ function MainApp() {
       setActiveVehicle(updated);
     }
     await refreshAll();
+    await runVehicleAutomationForVehicleId(activeVehicle.id).catch(console.warn);
   };
 
   // Fuel Handlers
-  const handleSaveFuel = async (fuelData: Omit<FuelEntry, 'id' | 'createdAt'>) => {
+  const handleSaveFuel = async (
+    fuelData: Omit<FuelEntry, 'id' | 'createdAt'>,
+    idempotencyKey?: string
+  ): Promise<boolean> => {
     const newEntry: FuelEntry = {
       id: 'fuel_' + Date.now(),
       ...fuelData,
       createdAt: new Date().toISOString(),
     };
-    await insertFuelEntry(newEntry);
-    if (activeVehicle) {
+    const saved = await insertFuelEntry(newEntry, idempotencyKey);
+    if (saved && activeVehicle) {
       await loadVehicleData(activeVehicle.id);
       const updated = await getVehicleById(activeVehicle.id);
       if (updated) setActiveVehicle(updated);
+      await runVehicleAutomationForVehicleId(activeVehicle.id).catch(console.warn);
     }
+    return saved;
   };
 
   const handleDeleteFuel = async (id: string) => {
     await deleteFuelEntry(id);
-    if (activeVehicle) await loadVehicleData(activeVehicle.id);
+    if (activeVehicle) {
+      await loadVehicleData(activeVehicle.id);
+      await runVehicleAutomationForVehicleId(activeVehicle.id).catch(console.warn);
+    }
   };
 
   // Service Handlers
-  const handleSaveService = async (serviceData: Omit<ServiceRecord, 'id' | 'createdAt'>) => {
+  const handleSaveService = async (
+    serviceData: Omit<ServiceRecord, 'id' | 'createdAt'>,
+    idempotencyKey?: string
+  ): Promise<boolean> => {
     const newService: ServiceRecord = {
       id: 'srv_' + Date.now(),
       ...serviceData,
       createdAt: new Date().toISOString(),
     };
-    await insertServiceRecord(newService);
-    if (activeVehicle) {
+    const saved = await insertServiceRecord(newService, idempotencyKey);
+    if (saved && activeVehicle) {
       await loadVehicleData(activeVehicle.id);
       const updated = await getVehicleById(activeVehicle.id);
       if (updated) setActiveVehicle(updated);
+      await runVehicleAutomationForVehicleId(activeVehicle.id).catch(console.warn);
     }
+    return saved;
   };
 
   const handleDeleteService = async (id: string) => {
     await deleteServiceRecord(id);
-    if (activeVehicle) await loadVehicleData(activeVehicle.id);
+    if (activeVehicle) {
+      await loadVehicleData(activeVehicle.id);
+      await runVehicleAutomationForVehicleId(activeVehicle.id).catch(console.warn);
+    }
   };
 
   // Expense Handlers
-  const handleSaveExpense = async (expenseData: Omit<ExpenseRecord, 'id' | 'createdAt'>) => {
+  const handleSaveExpense = async (
+    expenseData: Omit<ExpenseRecord, 'id' | 'createdAt'>,
+    idempotencyKey?: string
+  ): Promise<boolean> => {
     const newExpense: ExpenseRecord = {
       id: 'exp_' + Date.now(),
       ...expenseData,
       createdAt: new Date().toISOString(),
     };
-    await insertExpense(newExpense);
-    if (activeVehicle) await loadVehicleData(activeVehicle.id);
+    const saved = await insertExpense(newExpense, idempotencyKey);
+    if (saved && activeVehicle) await loadVehicleData(activeVehicle.id);
+    return saved;
   };
 
   const handleDeleteExpense = async (id: string) => {
@@ -329,12 +384,19 @@ function MainApp() {
       createdAt: new Date().toISOString(),
     };
     await insertMaintenancePlan(newPlan);
-    if (activeVehicle) await loadVehicleData(activeVehicle.id);
+    if (activeVehicle) {
+      await loadVehicleData(activeVehicle.id);
+      await runVehicleAutomationForVehicleId(activeVehicle.id).catch(console.warn);
+    }
   };
 
   const handleDeletePlan = async (id: string) => {
+    await cancelScheduledMaintenanceNotification(id);
     await deleteMaintenancePlan(id);
-    if (activeVehicle) await loadVehicleData(activeVehicle.id);
+    if (activeVehicle) {
+      await loadVehicleData(activeVehicle.id);
+      await runVehicleAutomationForVehicleId(activeVehicle.id).catch(console.warn);
+    }
   };
 
   // Settings Handlers
@@ -414,6 +476,7 @@ function MainApp() {
               setShowAddService(true);
             }}
             onOpenAddExpense={() => setShowAddExpense(true)}
+            onOpenScanReceiptModal={() => setShowScanReceiptModal(true)}
             onOpenOdometerModal={() => setShowOdometerModal(true)}
             onOpenReceipt={handleOpenReceipt}
             onNavigateTab={(tab) => {
@@ -638,7 +701,9 @@ function MainApp() {
         vehicle={activeVehicle}
         currency={settings.currency}
         onClose={() => setShowAddFuel(false)}
-        onSave={handleSaveFuel}
+        onSave={async (data) => {
+          await handleSaveFuel(data);
+        }}
       />
 
       <AddServiceModal
@@ -648,7 +713,9 @@ function MainApp() {
         selectedPlanId={selectedPlanIdForService}
         currency={settings.currency}
         onClose={() => setShowAddService(false)}
-        onSave={handleSaveService}
+        onSave={async (data) => {
+          await handleSaveService(data);
+        }}
       />
 
       <AddExpenseModal
@@ -656,7 +723,9 @@ function MainApp() {
         vehicle={activeVehicle}
         currency={settings.currency}
         onClose={() => setShowAddExpense(false)}
-        onSave={handleSaveExpense}
+        onSave={async (data) => {
+          await handleSaveExpense(data);
+        }}
       />
 
       <AddPlanModal
@@ -679,6 +748,22 @@ function MainApp() {
         onClose={() => setShowReceiptModal(false)}
       />
 
+      <SmartReceiptScanModal
+        visible={showScanReceiptModal}
+        vehicle={activeVehicle}
+        currency={settings.currency}
+        onClose={() => setShowScanReceiptModal(false)}
+        onSaveFuel={async (data) => {
+          await handleSaveFuel(data);
+        }}
+        onSaveService={async (data) => {
+          await handleSaveService(data);
+        }}
+        onSaveExpense={async (data) => {
+          await handleSaveExpense(data);
+        }}
+      />
+
       <AIAssistantModal
         visible={showAIAssistant}
         vehicle={activeVehicle}
@@ -689,12 +774,16 @@ function MainApp() {
         currency={settings.currency}
         onClose={() => setShowAIAssistant(false)}
         onTriggerAction={handleAITriggerAction}
+        onSaveFuel={handleSaveFuel}
+        onSaveService={handleSaveService}
+        onSaveExpense={handleSaveExpense}
       />
 
       <NotificationsModal
         visible={showNotificationsModal}
         vehicle={activeVehicle}
         plans={plans}
+        odometerEntries={odometerEntries}
         onClose={() => setShowNotificationsModal(false)}
         onOpenAddService={(planId) => {
           setSelectedPlanIdForService(planId);
