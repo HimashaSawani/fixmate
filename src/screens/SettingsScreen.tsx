@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Vehicle, AppSettings } from '../types';
 import { exportAllDataToJson, exportVehicleToCsv } from '../services/backupExport';
+import { sendInstantOdometerAlert } from '../services/notifications';
 import { seedDemoData } from '../database/db';
 import { RestoreModal } from '../components/RestoreModal';
 import { useTheme } from '../theme';
@@ -319,6 +320,50 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             thumbColor="#FFFFFF"
           />
         </View>
+
+        {/* Send Test Notification Button */}
+        <TouchableOpacity
+          style={[
+            styles.actionRowBtn,
+            {
+              borderBottomColor: 'transparent',
+              paddingTop: 12,
+            },
+          ]}
+          onPress={async () => {
+            if (!activeVehicle) {
+              Alert.alert('No Vehicle', 'Please select or add a vehicle first.');
+              return;
+            }
+            try {
+              await sendInstantOdometerAlert(
+                activeVehicle,
+                'Routine Inspection Test Alert',
+                activeVehicle.currentOdometer
+              );
+              Alert.alert(
+                'Test Sent 🔔',
+                `A test notification was dispatched for ${activeVehicle.name}. Check your phone status bar or notifications tray.`
+              );
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Failed to dispatch test notification.');
+            }
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.actionRowLeft}>
+            <Ionicons name="notifications-outline" size={20} color={theme.colors.accent} />
+            <View>
+              <Text style={[styles.actionRowTitle, { color: theme.colors.textPrimary }]}>
+                Send Test Notification
+              </Text>
+              <Text style={[styles.actionRowSub, { color: theme.colors.textSecondary }]}>
+                Verify local notification alerts and sound on this device
+              </Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
+        </TouchableOpacity>
       </View>
 
       {/* 5. Backup & Data Portability */}

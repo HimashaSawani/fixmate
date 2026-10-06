@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { MaintenanceStatusResult } from '../services/calculations';
-import { useTheme } from '../theme';
+import { theme, useTheme } from '../theme';
 
 interface MaintenancePlanCardProps {
   item: MaintenanceStatusResult;
