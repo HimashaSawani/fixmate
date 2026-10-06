@@ -12,17 +12,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { Vehicle, AppSettings } from '../types';
 import { exportAllDataToJson, exportVehicleToCsv } from '../services/backupExport';
 import { seedDemoData } from '../database/db';
-import { theme } from '../theme';
+import { RestoreModal } from '../components/RestoreModal';
+import { useTheme } from '../theme';
 
 interface SettingsScreenProps {
   settings: AppSettings;
   vehicles: Vehicle[];
   activeVehicle: Vehicle | null;
-  onUpdateSetting: (key: string, val: string) => Promise<void>;
+  onSaveSettings: (settings: AppSettings) => Promise<void>;
   onOpenAddVehicle: () => void;
   onEditVehicle: (v: Vehicle) => void;
   onDeleteVehicle: (id: string) => Promise<void>;
-  onReloadAllData: () => Promise<void>;
+  onSelectVehicle: (v: Vehicle) => void;
+  onRestoreComplete: () => Promise<void>;
 }
 
 const currencies = ['LKR', 'USD', 'EUR', 'GBP', 'INR', 'AUD'];
@@ -31,21 +33,30 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   settings,
   vehicles,
   activeVehicle,
-  onUpdateSetting,
+  onSaveSettings,
   onOpenAddVehicle,
   onEditVehicle,
   onDeleteVehicle,
-  onReloadAllData,
+  onSelectVehicle,
+  onRestoreComplete,
 }) => {
+  const { theme, isDark, toggleTheme } = useTheme();
   const [notifications, setNotifications] = useState(settings.enableNotifications);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
 
   const handleToggleNotifications = async (val: boolean) => {
     setNotifications(val);
-    await onUpdateSetting('enableNotifications', val ? 'true' : 'false');
+    await onSaveSettings({
+      ...settings,
+      enableNotifications: val,
+    });
   };
 
   const handleSelectCurrency = async (curr: string) => {
-    await onUpdateSetting('currency', curr);
+    await onSaveSettings({
+      ...settings,
+      currency: curr,
+    });
   };
 
   const handleResetDemoData = () => {
@@ -58,7 +69,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           text: 'Load Demo Data',
           onPress: async () => {
             await seedDemoData();
-            await onReloadAllData();
+            await onRestoreComplete();
             Alert.alert('Success', 'Sample demonstration data loaded successfully.');
           },
         },
@@ -89,29 +100,99 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 100 }}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      contentContainerStyle={{ paddingBottom: 110 }}
+      showsVerticalScrollIndicator={false}
+    >
       {/* Top Header */}
       <View style={styles.topHeader}>
-        <Text style={styles.screenTitle}>Settings & Management</Text>
-        <Text style={styles.screenSub}>Preferences, Garage, and Data Portability</Text>
+        <Text style={[styles.screenTitle, { color: theme.colors.textPrimary }]}>
+          Settings & Management
+        </Text>
+        <Text style={[styles.screenSub, { color: theme.colors.textSecondary }]}>
+          Preferences, Garage, and Data Portability
+        </Text>
       </View>
 
-      {/* 1. Garage & Vehicles Section */}
-      <View style={styles.sectionCard}>
+      {/* 1. Appearance / Theme Section */}
+      <View
+        style={[
+          styles.sectionCard,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+          },
+        ]}
+      >
+        <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>
+          APPEARANCE & THEME
+        </Text>
+        <View style={styles.toggleSettingRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.settingLabel, { color: theme.colors.textPrimary }]}>
+              Dark Mode (Midnight Navy)
+            </Text>
+            <Text style={[styles.settingSub, { color: theme.colors.textSecondary }]}>
+              {isDark ? 'Deep midnight navy palette active' : 'Cool blue-grey light theme active'}
+            </Text>
+          </View>
+          <Switch
+            value={isDark}
+            onValueChange={toggleTheme}
+            trackColor={{ false: '#CBD5E1', true: theme.colors.primary }}
+            thumbColor={isDark ? '#FFFFFF' : '#FFFFFF'}
+          />
+        </View>
+      </View>
+
+      {/* 2. Garage & Vehicles Section */}
+      <View
+        style={[
+          styles.sectionCard,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+          },
+        ]}
+      >
         <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>MY GARAGE ({vehicles.length})</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>
+            MY GARAGE ({vehicles.length})
+          </Text>
           <TouchableOpacity onPress={onOpenAddVehicle} style={styles.addVehicleLink}>
             <Ionicons name="add" size={14} color={theme.colors.primary} />
-            <Text style={styles.addVehicleLinkText}>Add Vehicle</Text>
+            <Text style={[styles.addVehicleLinkText, { color: theme.colors.primary }]}>
+              Add Vehicle
+            </Text>
           </TouchableOpacity>
         </View>
 
         {vehicles.map((v) => {
           const isActive = v.id === activeVehicle?.id;
           return (
-            <View key={v.id} style={styles.vehicleRow}>
+            <TouchableOpacity
+              key={v.id}
+              style={[
+                styles.vehicleRow,
+                {
+                  borderBottomColor: isDark
+                    ? 'rgba(255,255,255,0.05)'
+                    : 'rgba(0,0,0,0.05)',
+                },
+              ]}
+              onPress={() => onSelectVehicle(v)}
+            >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-                <View style={[styles.vehicleIconBox, isActive && { borderColor: theme.colors.primary }]}>
+                <View
+                  style={[
+                    styles.vehicleIconBox,
+                    {
+                      backgroundColor: isDark ? theme.colors.surfaceHighlight : '#F1F5F9',
+                      borderColor: isActive ? theme.colors.primary : 'transparent',
+                    },
+                  ]}
+                >
                   <Ionicons
                     name={v.type === 'motorcycle' ? 'bicycle' : 'car-sport'}
                     size={18}
@@ -120,14 +201,23 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 </View>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={styles.vName}>{v.name}</Text>
+                    <Text style={[styles.vName, { color: theme.colors.textPrimary }]}>
+                      {v.name}
+                    </Text>
                     {isActive && (
-                      <View style={styles.activePill}>
-                        <Text style={styles.activePillText}>Active</Text>
+                      <View
+                        style={[
+                          styles.activePill,
+                          { backgroundColor: theme.colors.primaryMuted },
+                        ]}
+                      >
+                        <Text style={[styles.activePillText, { color: theme.colors.primary }]}>
+                          Active
+                        </Text>
                       </View>
                     )}
                   </View>
-                  <Text style={styles.vSub}>
+                  <Text style={[styles.vSub, { color: theme.colors.textSecondary }]}>
                     {v.make} {v.model} • {v.currentOdometer.toLocaleString()} km
                   </Text>
                 </View>
@@ -144,14 +234,24 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   <Ionicons name="trash-outline" size={16} color={theme.colors.danger} />
                 </TouchableOpacity>
               </View>
-            </View>
+            </TouchableOpacity>
           );
         })}
       </View>
 
-      {/* 2. Preferences (Currency & Units) */}
-      <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>CURRENCY & LOCALIZATION</Text>
+      {/* 3. Preferences (Currency & Localization) */}
+      <View
+        style={[
+          styles.sectionCard,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+          },
+        ]}
+      >
+        <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>
+          CURRENCY & LOCALIZATION
+        </Text>
 
         <View style={styles.currencyGrid}>
           {currencies.map((curr) => {
@@ -159,44 +259,130 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             return (
               <TouchableOpacity
                 key={curr}
-                style={[styles.currBtn, isSelected && styles.currBtnActive]}
+                style={[
+                  styles.currBtn,
+                  {
+                    backgroundColor: isSelected
+                      ? theme.colors.primaryMuted
+                      : isDark
+                      ? theme.colors.surfaceHighlight
+                      : '#F1F5F9',
+                    borderColor: isSelected ? theme.colors.primary : 'transparent',
+                  },
+                ]}
                 onPress={() => handleSelectCurrency(curr)}
               >
-                <Text style={[styles.currText, isSelected && styles.currTextActive]}>{curr}</Text>
+                <Text
+                  style={[
+                    styles.currText,
+                    {
+                      color: isSelected ? theme.colors.primary : theme.colors.textSecondary,
+                      fontWeight: isSelected ? '800' : '600',
+                    },
+                  ]}
+                >
+                  {curr}
+                </Text>
               </TouchableOpacity>
             );
           })}
         </View>
+      </View>
 
-        {/* Notifications */}
+      {/* 4. Notifications & Reminders */}
+      <View
+        style={[
+          styles.sectionCard,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+          },
+        ]}
+      >
+        <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>
+          NOTIFICATIONS & ALERTS
+        </Text>
+
         <View style={styles.toggleSettingRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.settingLabel}>Maintenance Reminders</Text>
-            <Text style={styles.settingSub}>Receive notifications when services are due soon</Text>
+            <Text style={[styles.settingLabel, { color: theme.colors.textPrimary }]}>
+              Maintenance Reminders
+            </Text>
+            <Text style={[styles.settingSub, { color: theme.colors.textSecondary }]}>
+              Receive reminders when upcoming services are due soon or overdue
+            </Text>
           </View>
           <Switch
             value={notifications}
             onValueChange={handleToggleNotifications}
-            trackColor={{ false: '#334155', true: theme.colors.primary }}
-            thumbColor={notifications ? '#FFF' : '#94A3B8'}
+            trackColor={{ false: '#CBD5E1', true: theme.colors.primary }}
+            thumbColor="#FFFFFF"
           />
         </View>
       </View>
 
-      {/* 3. Backup, Export & Restore */}
-      <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>BACKUP & DATA PORTABILITY</Text>
+      {/* 5. Backup & Data Portability */}
+      <View
+        style={[
+          styles.sectionCard,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+          },
+        ]}
+      >
+        <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>
+          BACKUP & DATA PORTABILITY
+        </Text>
 
         <TouchableOpacity
-          style={styles.actionRowBtn}
+          style={[
+            styles.actionRowBtn,
+            {
+              borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+            },
+          ]}
           onPress={() => exportAllDataToJson()}
           activeOpacity={0.7}
         >
           <View style={styles.actionRowLeft}>
             <Ionicons name="cloud-download-outline" size={20} color={theme.colors.primary} />
             <View>
-              <Text style={styles.actionRowTitle}>Export Full JSON Backup</Text>
-              <Text style={styles.actionRowSub}>Save all vehicles, fuel logs, and service history</Text>
+              <Text style={[styles.actionRowTitle, { color: theme.colors.textPrimary }]}>
+                Export Full JSON Backup
+              </Text>
+              <Text style={[styles.actionRowSub, { color: theme.colors.textSecondary }]}>
+                Save all vehicles, fuel logs, and service history
+              </Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
+        </TouchableOpacity>
+
+        {/* Restore Backup Option */}
+        <TouchableOpacity
+          style={[
+            styles.actionRowBtn,
+            {
+              borderBottomColor: activeVehicle
+                ? isDark
+                  ? 'rgba(255,255,255,0.05)'
+                  : 'rgba(0,0,0,0.05)'
+                : 'transparent',
+            },
+          ]}
+          onPress={() => setShowRestoreModal(true)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.actionRowLeft}>
+            <Ionicons name="cloud-upload-outline" size={20} color={theme.colors.secondary} />
+            <View>
+              <Text style={[styles.actionRowTitle, { color: theme.colors.textPrimary }]}>
+                Restore Backup (JSON)
+              </Text>
+              <Text style={[styles.actionRowSub, { color: theme.colors.textSecondary }]}>
+                Import and merge data from a previous FixMate backup
+              </Text>
             </View>
           </View>
           <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
@@ -204,56 +390,76 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
         {activeVehicle && (
           <TouchableOpacity
-            style={styles.actionRowBtn}
+            style={[
+              styles.actionRowBtn,
+              {
+                borderBottomColor: 'transparent',
+              },
+            ]}
             onPress={() => exportVehicleToCsv(activeVehicle)}
             activeOpacity={0.7}
           >
             <View style={styles.actionRowLeft}>
-              <Ionicons name="document-text-outline" size={20} color={theme.colors.secondary} />
+              <Ionicons name="document-text-outline" size={20} color={theme.colors.primary} />
               <View>
-                <Text style={styles.actionRowTitle}>Export {activeVehicle.name} CSV</Text>
-                <Text style={styles.actionRowSub}>Export spreadsheet compatible mileage & cost table</Text>
+                <Text style={[styles.actionRowTitle, { color: theme.colors.textPrimary }]}>
+                  Export {activeVehicle.name} CSV
+                </Text>
+                <Text style={[styles.actionRowSub, { color: theme.colors.textSecondary }]}>
+                  Export spreadsheet compatible mileage & cost table
+                </Text>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
           </TouchableOpacity>
         )}
+      </View>
+
+      {/* 6. Developer & Demo Tools */}
+      <View
+        style={[
+          styles.sectionCard,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+          },
+        ]}
+      >
+        <Text style={[styles.sectionTitle, { color: theme.colors.warning }]}>
+          DEMO & DEVELOPER TOOLS
+        </Text>
 
         <TouchableOpacity
-          style={styles.actionRowBtn}
+          style={[
+            styles.actionRowBtn,
+            {
+              borderBottomColor: 'transparent',
+            },
+          ]}
           onPress={handleResetDemoData}
           activeOpacity={0.7}
         >
           <View style={styles.actionRowLeft}>
             <Ionicons name="refresh-circle-outline" size={20} color={theme.colors.warning} />
             <View>
-              <Text style={styles.actionRowTitle}>Seed / Reset Sample Data</Text>
-              <Text style={styles.actionRowSub}>Populate realistic sample fuel, services and expense logs</Text>
+              <Text style={[styles.actionRowTitle, { color: theme.colors.textPrimary }]}>
+                Seed / Reset Sample Data
+              </Text>
+              <Text style={[styles.actionRowSub, { color: theme.colors.textSecondary }]}>
+                Populate realistic sample vehicles, fuel, services and expenses
+              </Text>
             </View>
           </View>
           <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
         </TouchableOpacity>
       </View>
 
-      {/* 4. Architecture & Engineering Evidence Card */}
-      <View style={styles.evidenceCard}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-          <Ionicons name="shield-checkmark" size={16} color={theme.colors.secondary} />
-          <Text style={styles.evidenceTitle}>ENGINEERING & EVALUATION EVIDENCE</Text>
-        </View>
-        <Text style={styles.evidenceText}>
-          • <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>Offline SQLite Engine:</Text> Fully functional without internet, ACID transactions.
-        </Text>
-        <Text style={styles.evidenceText}>
-          • <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>Full-to-Full Fuel Algorithm:</Text> Correctly accumulates partial fills until the next full tank before calculating km/L.
-        </Text>
-        <Text style={styles.evidenceText}>
-          • <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>Double-Count Prevention:</Text> Fuel and Service costs are integrated without duplicate expense counting.
-        </Text>
-        <Text style={styles.evidenceText}>
-          • <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>Dynamic Interval Scheduling:</Text> Evaluates remaining km and days under the "whichever comes first" rule.
-        </Text>
-      </View>
+      {/* Restore Backup Modal */}
+      <RestoreModal
+        visible={showRestoreModal}
+        onClose={() => setShowRestoreModal(false)}
+        onRestoreSuccess={onRestoreComplete}
+      />
     </ScrollView>
   );
 };
@@ -261,7 +467,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
     paddingHorizontal: 16,
     paddingTop: 12,
   },
@@ -269,22 +474,22 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   screenTitle: {
-    color: theme.colors.textPrimary,
     fontSize: 18,
     fontWeight: '800',
   },
   screenSub: {
-    color: theme.colors.textSecondary,
     fontSize: 11,
     marginTop: 2,
   },
   sectionCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 20,
+    padding: 18,
     borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
     marginBottom: 16,
+    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -293,7 +498,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: {
-    color: theme.colors.textMuted,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1,
@@ -304,7 +508,6 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   addVehicleLinkText: {
-    color: theme.colors.primary,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -314,36 +517,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
   },
   vehicleIconBox: {
     width: 36,
     height: 36,
-    borderRadius: 8,
-    backgroundColor: theme.colors.background,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
   },
   vName: {
-    color: theme.colors.textPrimary,
     fontSize: 14,
     fontWeight: '700',
   },
   vSub: {
-    color: theme.colors.textSecondary,
     fontSize: 11,
     marginTop: 2,
   },
   activePill: {
-    backgroundColor: theme.colors.primaryMuted,
     paddingHorizontal: 6,
-    paddingVertical: 1,
+    paddingVertical: 2,
     borderRadius: 4,
   },
   activePillText: {
-    color: theme.colors.primaryLight,
     fontSize: 9,
     fontWeight: '800',
   },
@@ -365,23 +561,11 @@ const styles = StyleSheet.create({
   currBtn: {
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: theme.colors.background,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
-  },
-  currBtnActive: {
-    backgroundColor: theme.colors.primaryMuted,
-    borderColor: theme.colors.primary,
   },
   currText: {
-    color: theme.colors.textSecondary,
     fontSize: 12,
-    fontWeight: '600',
-  },
-  currTextActive: {
-    color: theme.colors.primaryLight,
-    fontWeight: '800',
   },
   toggleSettingRow: {
     flexDirection: 'row',
@@ -389,15 +573,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
   },
   settingLabel: {
-    color: theme.colors.textPrimary,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   settingSub: {
-    color: theme.colors.textSecondary,
     fontSize: 11,
     marginTop: 2,
   },
@@ -407,7 +588,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
   },
   actionRowLeft: {
     flexDirection: 'row',
@@ -416,33 +596,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   actionRowTitle: {
-    color: theme.colors.textPrimary,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   actionRowSub: {
-    color: theme.colors.textSecondary,
     fontSize: 11,
     marginTop: 2,
-  },
-  evidenceCard: {
-    backgroundColor: 'rgba(16, 185, 129, 0.08)',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.25)',
-    marginBottom: 20,
-  },
-  evidenceTitle: {
-    color: theme.colors.secondaryLight,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  evidenceText: {
-    color: theme.colors.textSecondary,
-    fontSize: 11,
-    lineHeight: 16,
-    marginTop: 6,
   },
 });

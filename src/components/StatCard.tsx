@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 
 interface StatCardProps {
   title: string;
@@ -19,25 +19,43 @@ export const StatCard: React.FC<StatCardProps> = ({
   unit,
   subtitle,
   icon,
-  accentColor = theme.colors.primary,
+  accentColor,
   trend,
 }) => {
+  const { theme, isDark } = useTheme();
+  const effectiveAccent = accentColor || theme.colors.primary;
+
   return (
-    <View style={styles.card}>
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: theme.colors.surface,
+          borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+          shadowColor: isDark ? '#000' : '#64748B',
+        },
+      ]}
+    >
       <View style={styles.header}>
-        <Text style={styles.title}>{title.toUpperCase()}</Text>
-        <View style={[styles.iconContainer, { backgroundColor: `${accentColor}20` }]}>
-          <Ionicons name={icon} size={16} color={accentColor} />
+        <Text style={[styles.title, { color: theme.colors.textMuted }]}>
+          {title.toUpperCase()}
+        </Text>
+        <View style={[styles.iconContainer, { backgroundColor: `${effectiveAccent}20` }]}>
+          <Ionicons name={icon} size={16} color={effectiveAccent} />
         </View>
       </View>
       <View style={styles.valueRow}>
-        <Text style={styles.value}>{value}</Text>
-        {unit && <Text style={styles.unit}>{unit}</Text>}
+        <Text style={[styles.value, { color: theme.colors.textPrimary }]}>{value}</Text>
+        {unit && <Text style={[styles.unit, { color: theme.colors.textSecondary }]}>{unit}</Text>}
       </View>
       {(subtitle || trend) && (
         <View style={styles.footer}>
-          {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
-          {trend && <Text style={[styles.trend, { color: accentColor }]}>{trend}</Text>}
+          {subtitle && (
+            <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
+              {subtitle}
+            </Text>
+          )}
+          {trend && <Text style={[styles.trend, { color: effectiveAccent }]}>{trend}</Text>}
         </View>
       )}
     </View>
@@ -46,13 +64,15 @@ export const StatCard: React.FC<StatCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: 14,
+    borderRadius: 18,
     padding: 14,
     borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
     flex: 1,
     minWidth: 140,
+    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
   },
   header: {
     flexDirection: 'row',
@@ -61,15 +81,14 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   title: {
-    color: theme.colors.textMuted,
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '800',
     letterSpacing: 0.8,
   },
   iconContainer: {
-    width: 26,
-    height: 26,
-    borderRadius: 6,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -79,12 +98,10 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   value: {
-    color: theme.colors.textPrimary,
     fontSize: 18,
     fontWeight: '800',
   },
   unit: {
-    color: theme.colors.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -95,11 +112,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   subtitle: {
-    color: theme.colors.textSecondary,
     fontSize: 11,
   },
   trend: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });
