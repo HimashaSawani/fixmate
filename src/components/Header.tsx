@@ -1,122 +1,209 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Vehicle } from '../types';
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 
 interface HeaderProps {
   activeVehicle: Vehicle | null;
   vehicles: Vehicle[];
+  notificationCount?: number;
   onSelectVehicle: (vehicle: Vehicle) => void;
   onOpenAddVehicle: () => void;
   onOpenOdometerModal: () => void;
+  onOpenNotifications: () => void;
   onOpenAIAssistant: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   activeVehicle,
   vehicles,
+  notificationCount = 0,
   onSelectVehicle,
   onOpenAddVehicle,
   onOpenOdometerModal,
+  onOpenNotifications,
   onOpenAIAssistant,
 }) => {
-  const [dropdownOpen, setDropdownOpen] = React.useState(false);
+  const { theme, isDark, toggleTheme } = useTheme();
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <View style={styles.topRow}>
-        {/* Vehicle Switcher */}
-        <TouchableOpacity
-          style={styles.vehicleSelector}
-          onPress={() => setDropdownOpen(!dropdownOpen)}
-          activeOpacity={0.8}
-        >
-          <View style={styles.vehicleIconBadge}>
-            <Ionicons
-              name={activeVehicle?.type === 'motorcycle' ? 'bicycle' : 'car-sport'}
-              size={18}
-              color={theme.colors.primary}
-            />
-          </View>
-          <View style={styles.vehicleInfo}>
-            <View style={styles.nameRow}>
-              <Text style={styles.vehicleName} numberOfLines={1}>
-                {activeVehicle ? activeVehicle.name : 'Select Vehicle'}
-              </Text>
+        {/* Brand Name */}
+        <View style={styles.brandRow}>
+          <Text style={[styles.brandPrefix, { color: theme.colors.textPrimary }]}>Fix</Text>
+          <Text style={[styles.brandSuffix, { color: theme.colors.primary }]}>Mate</Text>
+        </View>
+
+        {/* Right Section: Vehicle Selector Pill + Theme Toggle + Bell + AI Button */}
+        <View style={styles.rightSection}>
+          {/* Vehicle Selector Pill */}
+          <TouchableOpacity
+            style={[
+              styles.vehiclePill,
+              {
+                backgroundColor: isDark ? theme.colors.surfaceHighlight : theme.colors.surface,
+                borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0',
+              },
+            ]}
+            onPress={() => setDropdownOpen(!dropdownOpen)}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.miniCarCircle, { backgroundColor: theme.colors.primaryMuted }]}>
               <Ionicons
-                name={dropdownOpen ? 'chevron-up' : 'chevron-down'}
-                size={16}
-                color={theme.colors.textSecondary}
+                name={activeVehicle?.type === 'motorcycle' ? 'bicycle' : 'car-sport'}
+                size={14}
+                color={theme.colors.primary}
               />
             </View>
-            <Text style={styles.vehicleSubtitle} numberOfLines={1}>
-              {activeVehicle
-                ? `${activeVehicle.make} ${activeVehicle.model} ${activeVehicle.year}`
-                : 'Tap to choose'}
+            <Text
+              style={[styles.vehiclePillText, { color: theme.colors.textPrimary }]}
+              numberOfLines={1}
+            >
+              {activeVehicle ? activeVehicle.name : 'Select'}
             </Text>
-          </View>
-        </TouchableOpacity>
+            <Ionicons
+              name={dropdownOpen ? 'chevron-up' : 'chevron-down'}
+              size={14}
+              color={theme.colors.textSecondary}
+            />
+          </TouchableOpacity>
 
-        {/* Action Buttons: AI Assistant & Quick Odometer */}
-        <View style={styles.actionsRow}>
+          {/* Theme Toggle Sun / Moon */}
           <TouchableOpacity
-            style={styles.aiButton}
+            style={[
+              styles.iconBtn,
+              {
+                backgroundColor: isDark ? theme.colors.surfaceHighlight : theme.colors.surface,
+                borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0',
+              },
+            ]}
+            onPress={toggleTheme}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={isDark ? 'sunny-outline' : 'moon-outline'}
+              size={18}
+              color={isDark ? '#FBBF24' : '#2563EB'}
+            />
+          </TouchableOpacity>
+
+          {/* 1. Notification Bell Button */}
+          <TouchableOpacity
+            style={[
+              styles.iconBtn,
+              {
+                backgroundColor: isDark ? theme.colors.surfaceHighlight : theme.colors.surface,
+                borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0',
+              },
+            ]}
+            onPress={onOpenNotifications}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="notifications-outline" size={18} color={theme.colors.textPrimary} />
+            {notificationCount > 0 && (
+              <View style={[styles.badgeCount, { backgroundColor: theme.colors.danger }]}>
+                <Text style={styles.badgeText}>{notificationCount > 9 ? '9+' : notificationCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* 2. FixMate AI Copilot Button */}
+          <TouchableOpacity
+            style={[
+              styles.iconBtn,
+              styles.aiBtn,
+              {
+                backgroundColor: isDark ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.12)',
+                borderColor: isDark ? 'rgba(139, 92, 246, 0.4)' : 'rgba(139, 92, 246, 0.3)',
+              },
+            ]}
             onPress={onOpenAIAssistant}
             activeOpacity={0.7}
           >
-            <MaterialCommunityIcons name="robot" size={18} color="#A78BFA" />
-            <Text style={styles.aiButtonText}>AI</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.odometerPill}
-            onPress={onOpenOdometerModal}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="speedometer-outline" size={14} color={theme.colors.primary} />
-            <Text style={styles.odometerText}>
-              {activeVehicle ? `${activeVehicle.currentOdometer.toLocaleString()} km` : '0 km'}
-            </Text>
+            <Ionicons name="sparkles" size={16} color="#8B5CF6" />
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Vehicle Dropdown Menu */}
       {dropdownOpen && (
-        <View style={styles.dropdown}>
-          <Text style={styles.dropdownHeader}>SWITCH VEHICLE</Text>
+        <View
+          style={[
+            styles.dropdown,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: isDark ? 'rgba(255,255,255,0.12)' : '#E2E8F0',
+              shadowColor: isDark ? '#000' : '#64748B',
+            },
+          ]}
+        >
+          <View style={styles.dropdownHeaderRow}>
+            <Text style={[styles.dropdownHeader, { color: theme.colors.textMuted }]}>
+              MY GARAGE
+            </Text>
+            <TouchableOpacity onPress={onOpenOdometerModal}>
+              <Text style={[styles.updateOdoText, { color: theme.colors.primary }]}>
+                + Update Odo
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           {vehicles.map((v) => {
             const isSelected = v.id === activeVehicle?.id;
             return (
               <TouchableOpacity
                 key={v.id}
-                style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected]}
+                style={[
+                  styles.dropdownItem,
+                  isSelected && {
+                    backgroundColor: isDark
+                      ? 'rgba(37,99,235,0.15)'
+                      : 'rgba(37,99,235,0.08)',
+                  },
+                ]}
                 onPress={() => {
                   onSelectVehicle(v);
                   setDropdownOpen(false);
                 }}
               >
                 <View style={styles.dropdownItemLeft}>
-                  <Ionicons
-                    name={v.type === 'motorcycle' ? 'bicycle' : 'car-sport'}
-                    size={18}
-                    color={isSelected ? theme.colors.primary : theme.colors.textSecondary}
-                  />
-                  <View style={{ marginLeft: 10 }}>
+                  <View
+                    style={[
+                      styles.vehicleThumb,
+                      {
+                        backgroundColor: isSelected
+                          ? theme.colors.primary
+                          : isDark
+                          ? theme.colors.surfaceHighlight
+                          : '#F1F5F9',
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={v.type === 'motorcycle' ? 'bicycle' : 'car-sport'}
+                      size={16}
+                      color={isSelected ? '#FFFFFF' : theme.colors.textSecondary}
+                    />
+                  </View>
+                  <View style={styles.dropdownItemDetails}>
                     <Text
                       style={[
                         styles.dropdownItemName,
-                        isSelected && { color: theme.colors.primary, fontWeight: '700' },
+                        { color: theme.colors.textPrimary },
+                        isSelected && { fontWeight: '700', color: theme.colors.primary },
                       ]}
                     >
                       {v.name}
                     </Text>
-                    <Text style={styles.dropdownItemSub}>
+                    <Text style={[styles.dropdownItemSub, { color: theme.colors.textSecondary }]}>
                       {v.make} {v.model} • {v.currentOdometer.toLocaleString()} km
                     </Text>
                   </View>
                 </View>
+
                 {isSelected && (
                   <Ionicons name="checkmark-circle" size={18} color={theme.colors.primary} />
                 )}
@@ -125,14 +212,16 @@ export const Header: React.FC<HeaderProps> = ({
           })}
 
           <TouchableOpacity
-            style={styles.addVehicleBtn}
+            style={[styles.addVehicleBtn, { borderColor: theme.colors.primary }]}
             onPress={() => {
               setDropdownOpen(false);
               onOpenAddVehicle();
             }}
           >
-            <Ionicons name="add-circle-outline" size={18} color={theme.colors.secondary} />
-            <Text style={styles.addVehicleBtnText}>+ Add New Vehicle</Text>
+            <Ionicons name="add-circle-outline" size={18} color={theme.colors.primary} />
+            <Text style={[styles.addVehicleText, { color: theme.colors.primary }]}>
+              Add Another Vehicle
+            </Text>
           </TouchableOpacity>
         </View>
       )}
@@ -142,12 +231,9 @@ export const Header: React.FC<HeaderProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: theme.colors.backgroundSecondary,
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.cardBorder,
+    paddingTop: Platform.OS === 'ios' ? 8 : 12,
+    paddingBottom: 8,
     zIndex: 100,
   },
   topRow: {
@@ -155,97 +241,110 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  vehicleSelector: {
+  brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-    marginRight: 8,
   },
-  vehicleIconBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: theme.colors.primaryMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(6, 182, 212, 0.3)',
+  brandPrefix: {
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: -0.5,
   },
-  vehicleInfo: {
-    flex: 1,
+  brandSuffix: {
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: -0.5,
   },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  vehicleName: {
-    color: theme.colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  vehicleSubtitle: {
-    color: theme.colors.textSecondary,
-    fontSize: 12,
-    marginTop: 1,
-  },
-  actionsRow: {
+  rightSection: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  aiButton: {
+  vehiclePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
-    paddingHorizontal: 10,
     paddingVertical: 6,
+    paddingHorizontal: 10,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.3)',
+    gap: 6,
+    maxWidth: 160,
   },
-  aiButtonText: {
-    color: '#A78BFA',
-    fontSize: 12,
+  miniCarCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehiclePillText: {
+    fontSize: 13,
     fontWeight: '700',
   },
-  odometerPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: theme.colors.surface,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
   },
-  odometerText: {
-    color: theme.colors.textPrimary,
-    fontSize: 12,
-    fontWeight: '600',
+  aiBtn: {
+    marginLeft: 2,
+  },
+  badgeCount: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  notificationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    position: 'absolute',
+    top: 8,
+    right: 8,
   },
   dropdown: {
-    marginTop: 12,
-    backgroundColor: theme.colors.surface,
-    borderRadius: 14,
-    padding: 12,
+    position: 'absolute',
+    top: 60,
+    left: 16,
+    right: 16,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: theme.colors.cardBorderActive,
-    shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 8,
-    elevation: 8,
+    padding: 14,
+    elevation: 12,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    zIndex: 999,
+  },
+  dropdownHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
   },
   dropdownHeader: {
-    color: theme.colors.textMuted,
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
     letterSpacing: 1,
-    marginBottom: 8,
+  },
+  updateOdoText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   dropdownItem: {
     flexDirection: 'row',
@@ -253,25 +352,30 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 10,
     paddingHorizontal: 10,
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 4,
-  },
-  dropdownItemSelected: {
-    backgroundColor: theme.colors.surfaceHighlight,
   },
   dropdownItemLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
+  },
+  vehicleThumb: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dropdownItemDetails: {
+    gap: 2,
   },
   dropdownItemName: {
-    color: theme.colors.textPrimary,
     fontSize: 14,
     fontWeight: '600',
   },
   dropdownItemSub: {
-    color: theme.colors.textSecondary,
-    fontSize: 11,
-    marginTop: 2,
+    fontSize: 12,
   },
   addVehicleBtn: {
     flexDirection: 'row',
@@ -279,13 +383,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 10,
-    marginTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.cardBorder,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    marginTop: 8,
   },
-  addVehicleBtnText: {
-    color: theme.colors.secondary,
+  addVehicleText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

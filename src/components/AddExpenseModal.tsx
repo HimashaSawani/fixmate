@@ -26,12 +26,12 @@ interface AddExpenseModalProps {
 }
 
 const expenseCategories: { category: ExpenseCategory; label: string; icon: keyof typeof Ionicons.glyphMap; color: string }[] = [
-  { category: 'repair', label: 'Repair', icon: 'hammer-outline', color: theme.colors.repairColor },
-  { category: 'insurance', label: 'Insurance', icon: 'shield-checkmark-outline', color: theme.colors.insuranceColor },
-  { category: 'registration', label: 'Registration / Tax', icon: 'document-text-outline', color: theme.colors.registrationColor },
-  { category: 'accessories', label: 'Accessories', icon: 'cart-outline', color: theme.colors.accessoriesColor },
+  { category: 'repair', label: 'Repair', icon: 'hammer-outline', color: '#F59E0B' },
+  { category: 'insurance', label: 'Insurance', icon: 'shield-checkmark-outline', color: '#8B5CF6' },
+  { category: 'registration', label: 'Registration / Tax', icon: 'document-text-outline', color: '#EC4899' },
+  { category: 'accessories', label: 'Accessories', icon: 'cart-outline', color: '#06B6D4' },
   { category: 'parking_tolls', label: 'Parking & Tolls', icon: 'car-outline', color: '#0EA5E9' },
-  { category: 'other', label: 'Other', icon: 'receipt-outline', color: theme.colors.otherColor },
+  { category: 'other', label: 'Other', icon: 'receipt-outline', color: '#64748B' },
 ];
 
 export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
